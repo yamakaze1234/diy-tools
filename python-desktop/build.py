@@ -6,7 +6,7 @@ from datetime import datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
-VERSION = '0.3.4'
+VERSION = '0.3.5'
 
 
 def build():

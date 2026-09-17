@@ -1,10 +1,10 @@
 # DIY 配置工作台（diy-tools）
 
-用于 DIY 整机配置维护、配件成本管理、配置图编辑与导出、ERP 库存读取和多人云同步的 Windows 桌面工具。当前 Python 桌面版为 **0.3.4**；仓库同时保留 Node/Electron 原型和共享业务规则。
+用于 DIY 整机配置维护、配件成本管理、配置图编辑与导出、ERP 库存读取和多人云同步的 Windows 桌面工具。当前 Python 桌面版为 **0.3.5**；仓库同时保留 Node/Electron 原型和共享业务规则。
 
 ## 下载 Windows 程序
 
-[下载最新 Release](https://github.com/yamakaze1234/diy-tools/releases/latest) · [v0.3.4 发布页](https://github.com/yamakaze1234/diy-tools/releases/tag/v0.3.4)
+[下载最新 Release](https://github.com/yamakaze1234/diy-tools/releases/latest) · [v0.3.5 发布页](https://github.com/yamakaze1234/diy-tools/releases/tag/v0.3.5)
 
 下载 Release 中的 Windows ZIP，完整解压后运行 EXE，无需安装 Python/Node。公开包使用云配置占位模板，需按[部署说明](docs/部署与开发.md)配置自己的云环境和成员账号；包内不含现有团队数据。
 

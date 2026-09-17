@@ -1,0 +1,10 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {shopAddonRows,validateShopAddonChanges} from '../shop-addon-data.js';
+import {sourceAddon,sourceAddonFields} from '../addon-data.js';
+const shops=[{id:'intel'},{id:'gigabyte'},{id:'jonsbo'}];
+const rows=shops.map((s,i)=>({sourceId:s.id,shopId:s.id,goodsId:'100',name:'原配件',addonGoodsId:'900',addonQty:1,addonNote:'说明'+i,addonText:'加购'+i,addonPriceCents:1000+i}));
+const change=r=>({sourceId:r.sourceId,shopId:r.shopId,before:sourceAddonFields(sourceAddon(r)),addon:{...sourceAddon(r),priceCents:29900,text:'新描述'}});
+test('三店按准确 ERP ID 关联，重复和缺少输出源不自动猜测',()=>{let result=shopAddonRows(rows,rows[0],shops);assert.deepEqual(result.map(e=>e.row.sourceId),shops.map(s=>s.id));result=shopAddonRows([...rows,{...rows[1],sourceId:'duplicate'}],rows[0],shops);assert.equal(result[1].row,null);assert.equal(shopAddonRows([rows[0]],rows[0],shops)[2].row,null);});
+test('只改勾选店铺的价格描述，保留其余共同信息和店铺',()=>{const before=structuredClone(rows);const updates=validateShopAddonChanges(rows,[change(rows[1])],[{goodsId:'900'}]);assert.equal(updates.length,1);Object.assign(updates[0].row,updates[0].fields);assert.deepEqual(rows[0],before[0]);assert.deepEqual(rows[2],before[2]);assert.equal(rows[1].addonQty,1);assert.equal(rows[1].addonNote,'说明1');assert.equal(rows[1].addonPriceCents,29900);Object.assign(rows[1],before[1]);});
+test('多个店铺预检先完整验证，过期或非法商品不能部分写入',()=>{const cs=rows.slice(1).map(change),before=structuredClone(rows);cs[1].before.addonText='过期';assert.throws(()=>validateShopAddonChanges(rows,cs,[{goodsId:'900'}]),/已变化/);assert.deepEqual(rows,before);cs[1]=change(rows[2]);cs[1].addon.goodsId='999';assert.throws(()=>validateShopAddonChanges(rows,cs,[{goodsId:'900'}]),/商品不存在/);assert.deepEqual(rows,before);});

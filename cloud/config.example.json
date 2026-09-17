@@ -1,0 +1,7 @@
+{
+  "envId": "your-cloudbase-env-id",
+  "region": "ap-shanghai",
+  "functionName": "workbenchApi",
+  "protocolVersion": 1,
+  "backend": "postgresql"
+}

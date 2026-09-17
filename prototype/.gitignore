@@ -1,0 +1,5 @@
+.local/
+.verification/
+node_modules/
+.env.local
+vendor/cloudbase.js

@@ -1,0 +1,208 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "DIY 配置工作台 · 系统架构",
+    "subtitle": "Python 桌面版 0.3.3 | 普通编辑先保存本机，云端同步独立调度",
+    "quality_profile": "showcase",
+    "visual_preset": "blueprint"
+  },
+  "components": [
+    {
+      "id": "window",
+      "type": "frontend",
+      "label": "桌面界面",
+      "sublabel": "pywebview / WebView2",
+      "pos": [
+        60,
+        260
+      ],
+      "size": [
+        200,
+        76
+      ]
+    },
+    {
+      "id": "service",
+      "type": "backend",
+      "label": "本机 Python 服务",
+      "sublabel": "HTTP · 会话 · 业务操作",
+      "pos": [
+        340,
+        260
+      ],
+      "size": [
+        200,
+        76
+      ]
+    },
+    {
+      "id": "sync",
+      "type": "backend",
+      "label": "后台同步",
+      "sublabel": "两小时 / 手动触发",
+      "pos": [
+        620,
+        260
+      ],
+      "size": [
+        200,
+        76
+      ]
+    },
+    {
+      "id": "gateway",
+      "type": "cloud",
+      "label": "workbenchApi",
+      "sublabel": "CloudBase 云函数",
+      "pos": [
+        900,
+        260
+      ],
+      "size": [
+        200,
+        76
+      ]
+    },
+    {
+      "id": "database",
+      "type": "database",
+      "label": "云端 PostgreSQL",
+      "sublabel": "成员 · 记录 · 提交日志",
+      "pos": [
+        1180,
+        260
+      ],
+      "size": [
+        200,
+        76
+      ]
+    },
+    {
+      "id": "local",
+      "type": "database",
+      "label": "本机数据",
+      "sublabel": "SQLite / JSON / 图片",
+      "pos": [
+        340,
+        70
+      ],
+      "size": [
+        200,
+        76
+      ]
+    },
+    {
+      "id": "rules",
+      "type": "backend",
+      "label": "共享业务规则",
+      "sublabel": "QuickJS 纯函数",
+      "pos": [
+        340,
+        450
+      ],
+      "size": [
+        200,
+        76
+      ]
+    },
+    {
+      "id": "erp",
+      "type": "external",
+      "label": "ERP SQL Server",
+      "sublabel": "只读查询 · 预览确认",
+      "pos": [
+        60,
+        450
+      ],
+      "size": [
+        200,
+        76
+      ]
+    },
+    {
+      "id": "storage",
+      "type": "cloud",
+      "label": "云端图片存储",
+      "sublabel": "成员鉴权 · 原始素材",
+      "pos": [
+        620,
+        70
+      ],
+      "size": [
+        200,
+        76
+      ]
+    },
+    {
+      "id": "auth",
+      "type": "security",
+      "label": "成员认证",
+      "sublabel": "CloudBase 客户端 SDK",
+      "pos": [
+        60,
+        70
+      ],
+      "size": [
+        200,
+        76
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "from": "window",
+      "to": "service"
+    },
+    {
+      "from": "service",
+      "to": "sync"
+    },
+    {
+      "from": "sync",
+      "to": "gateway"
+    },
+    {
+      "from": "gateway",
+      "to": "database"
+    },
+    {
+      "from": "service",
+      "to": "local"
+    },
+    {
+      "from": "service",
+      "to": "rules"
+    },
+    {
+      "from": "service",
+      "to": "erp"
+    },
+    {
+      "from": "sync",
+      "to": "storage"
+    },
+    {
+      "from": "window",
+      "to": "auth"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "本机优先",
+      "items": [
+        "编辑、历史版本与同步队列保存在本机。",
+        "ERP 成本、可销数和 SQL 凭据不参与业务云同步。"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "同步顺序",
+      "items": [
+        "上传提交并确认回执，再分页拉取更新。",
+        "冲突需人工选择；不确定提交保留原 ID。"
+      ]
+    }
+  ]
+}

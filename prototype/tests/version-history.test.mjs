@@ -1,0 +1,6 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {VersionHistory} from '../version-history.mjs';
+const state=(revision,name)=>({revision,configs:[{id:'c',shopId:'intel',name,price:100,parts:[],addons:[]}],costSource:[],sourceCatalog:[],templates:[],caseGallery:[],shopSettings:{intel:{coupon:0}}});
+test('历史预览准确列出差异，隔离工作区且校验完整性',t=>{const h=new VersionHistory(':memory:');t.after(()=>h.close());h.record(state(1,'旧名'),'a');const first=h.list('a')[0];h.record(state(2,'新名'),'a');const p=h.preview(first.id,'a',state(2,'新名'));assert.equal(p.baseRevision,2);assert.equal(p.changes.length,1);assert.equal(p.changes[0].before.name,'新名');assert.equal(p.changes[0].after.name,'旧名');assert.throws(()=>h.get(first.id,'b'),/不存在/);h.db.prepare('UPDATE versions SET content=? WHERE id=?').run('{}',first.id);assert.throws(()=>h.get(first.id,'a'),/校验/);});
+test('版本数量有界，重复状态不重复写入；拒绝跨库存来源还原',t=>{const h=new VersionHistory(':memory:',{limit:2});t.after(()=>h.close());for(let i=0;i<3;i++)h.record(state(i,String(i)),'a');assert.equal(h.list('a').length,2);h.record(state(2,'2'),'a');assert.equal(h.list('a').length,2);assert.throws(()=>h.preview(h.list('a')[0].id,'a',{...state(3,'3'),erpSync:{scope:'other'}}),/不同库存来源/);});

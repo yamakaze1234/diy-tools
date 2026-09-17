@@ -1,0 +1,23 @@
+{
+  "name": "diy-workbench-prototype",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "start": "node server.mjs",
+    "test": "node run-tests.mjs",
+    "build:sync": "node build-sync.mjs",
+    "test:sync:live": "node verification/cloud-sync-live.mjs",
+    "build:desktop": "node build-desktop.mjs",
+    "test:workspace:live": "node verification/workspace-live.mjs"
+  },
+  "dependencies": {
+    "@cloudbase/js-sdk": "3.9.4",
+    "mssql": "^12.7.2"
+  },
+  "devDependencies": {
+    "electron": "44.4.1",
+    "electron-builder": "26.15.3",
+    "esbuild": "0.28.2"
+  }
+}

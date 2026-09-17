@@ -1,0 +1,82 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import {createRequire} from 'node:module';
+import {fileURLToPath} from 'node:url';
+import {inventoryPlan, inventoryLinks} from '../inventory-export.js';
+
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const require = createRequire(import.meta.url);
+const {chromium} = require(process.env.PLAYWRIGHT_MODULE || path.join(process.env.USERPROFILE, '.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright'));
+const url = process.env.WORKBENCH_URL || 'http://127.0.0.1:4178';
+const out = path.join(root, 'verification/inventory-export');
+await fs.mkdir(out, {recursive: true});
+const before = await (await fetch(url + '/api/state')).text();
+const state = JSON.parse(before);
+const browser = await chromium.launch({headless: true, channel: 'msedge'});
+const page = await browser.newPage({viewport: {width: 1440, height: 1000}, acceptDownloads: true});
+const errors = [], writes = [], checks = [];
+page.on('pageerror', error => errors.push(error.message));
+await page.route('**/api/**', async route => {
+  if (route.request().method() !== 'GET') { writes.push(route.request().url()); return route.abort(); }
+  await route.continue();
+});
+try {
+  await page.goto(url);
+  await page.locator('#inventory-export-open').waitFor();
+  await page.waitForFunction(() => !document.querySelector('#save-status').textContent.includes('载入中'));
+  await page.locator('#shop-picker').selectOption('intel');
+  const button = await page.locator('#inventory-export-open').boundingBox();
+  const logs = await page.locator('[data-nav="logs"]').boundingBox();
+  assert.ok(button.x > logs.x && Math.abs(button.y - logs.y) < 2, 'button is to the right of operation log');
+  await page.locator('.sidebar').screenshot({path: path.join(out, 'navigation.png')});
+  await page.locator('#inventory-export-open').click();
+  assert.equal(await page.locator('#inventory-threshold').inputValue(), '10');
+  assert.equal(await page.locator('#inventory-download').isDisabled(), true);
+  assert.equal(await page.locator('[data-inventory-link]').count(), inventoryLinks(state.configs, 'intel').length);
+  await page.locator('[data-inventory-link]').first().check();
+  const summary = await page.locator('#inventory-summary').innerText();
+  await page.locator('#inventory-search').fill('__no_matching_link__');
+  assert.equal(await page.locator('#inventory-summary').innerText(), summary);
+  assert.equal(await page.locator('#inventory-all').isDisabled(), true);
+  await page.locator('#inventory-search').fill('');
+  assert.equal(await page.locator('[data-inventory-link]').first().isChecked(), true);
+  await page.locator('#inventory-all').check();
+  const plan = inventoryPlan(state.configs, 'intel', inventoryLinks(state.configs, 'intel').map(g => g.id));
+  assert.equal(await page.locator('#inventory-preview tbody tr').count(), plan.rows.length);
+  assert.ok((await page.locator('#inventory-summary').innerText()).includes(`${plan.rows.length} 个唯一 goodsid`));
+  await page.locator('#inventory-threshold').fill('-1');
+  assert.equal(await page.locator('#inventory-download').isDisabled(), true);
+  await page.locator('#inventory-threshold').fill('10');
+  await page.locator('#dialog').screenshot({path: path.join(out, 'preview-desktop.png')});
+  const downloadPromise = page.waitForEvent('download');
+  await page.locator('#inventory-download').click();
+  const download = await downloadPromise;
+  await download.saveAs(path.join(out, 'monitor-import.csv'));
+  const csv = await fs.readFile(path.join(out, 'monitor-import.csv'), 'utf8');
+  assert.ok(csv.startsWith('\uFEFF"goodsid","名称","预警值"'));
+  checks.push({shop: 'intel', links: plan.groups.length, configs: plan.configCount, goodsids: plan.rows.length, merged: plan.merged, skipped: plan.skipped.length});
+  await page.setViewportSize({width: 390, height: 844});
+  const dimensions = await page.locator('#dialog').evaluate(el => ({width: el.getBoundingClientRect().width, scroll: el.scrollWidth, client: el.clientWidth}));
+  assert.ok(dimensions.width <= 390 && dimensions.scroll <= dimensions.client + 1);
+  await page.locator('#dialog').screenshot({path: path.join(out, 'preview-mobile.png')});
+  await page.keyboard.press('Escape');
+  await page.setViewportSize({width: 1440, height: 1000});
+  for (const shop of ['gigabyte', 'jonsbo']) {
+    await page.locator('#shop-picker').selectOption(shop);
+    await page.locator('#inventory-export-open').click();
+    assert.equal(await page.locator('#inventory-download').isDisabled(), true);
+    await page.locator('#inventory-all').check();
+    const expected = inventoryPlan(state.configs, shop, inventoryLinks(state.configs, shop).map(g => g.id));
+    assert.equal(await page.locator('#inventory-preview tbody tr').count(), expected.rows.length);
+    checks.push({shop, links: expected.groups.length, configs: expected.configCount, goodsids: expected.rows.length});
+    await page.keyboard.press('Escape');
+  }
+  await page.locator('[data-nav="logs"]').click();
+  assert.equal(await page.locator('#dialog').evaluate(el => el.classList.contains('inventory-dialog')), false);
+  assert.deepEqual(errors, []);
+  assert.deepEqual(writes, []);
+  assert.equal(await (await fetch(url + '/api/state')).text(), before, 'workspace data unchanged');
+  await fs.writeFile(path.join(out, 'browser-result.json'), JSON.stringify({checks, errors, writes, dataUnchanged: true, navigationPosition: 'right-of-logs', mobileFits: true}, null, 2));
+  console.log(JSON.stringify({checks, errors, writes, dataUnchanged: true}));
+} finally { await browser.close(); }

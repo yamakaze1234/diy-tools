@@ -1,0 +1,9 @@
+.venv/
+build/
+dist/
+web/
+*.log
+__pycache__/
+data/
+.data-migration-*/
+.verification/

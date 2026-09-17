@@ -31,7 +31,9 @@
     function gpuInfo(text) {
       const value = String(text || "");
       const compact = value.toUpperCase().replace(/\s+/g, "");
-      const modelMatch = compact.match(/(RTX[0-9]{4}(?:TI|SUPER)?|RX[0-9]{4}(?:XT|GRE)?|ARC[A-Z0-9]+)/);
+      // Keep the China-market 5090D distinct; V2 uses the same short label.
+      const is5090D = /(?:^|[^0-9])5090\s*D(?:\s*V2)?(?![A-Z0-9])/i.test(value);
+      const modelMatch = is5090D ? [null, "RTX5090D"] : compact.match(/(RTX[0-9]{4}(?:TI|SUPER)?|RX[0-9]{4}(?:XT|GRE)?|ARC[A-Z0-9]+)/);
       let model = modelMatch ? modelMatch[1].replace("RTX", "RTX ").replace("TI", "Ti") : "";
       const vramMatches = [...value.toUpperCase().matchAll(/(?:^|[^A-Z0-9])(\d{1,2})\s*G(?:B)?\b/g)];
       const vram = vramMatches.length ? vramMatches[vramMatches.length - 1][1] : "";

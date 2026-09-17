@@ -37,4 +37,4 @@ ERP 成本及可销数仍只在本机保存，SQL 读取后预览确认。人工
 
 构建位置记录在 `verification/latest-build.json`。分发脚本仅收录 EXE、`_internal`、使用说明和 WebView2 安装程序，自动排除程序旁的 `data`，即使本机已使用过该程序也不会把业务数据打入分发包。
 
-版本：0.3.3。Windows 10/11 x64；使用 Windows Edge WebView2 运行时。分发包不包含当前业务数据、登录令牌或 SQL 账号密码。
+版本：0.3.4。Windows 10/11 x64；使用 Windows Edge WebView2 运行时。分发包不包含当前业务数据、登录令牌或 SQL 账号密码。

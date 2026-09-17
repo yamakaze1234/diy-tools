@@ -1,10 +1,10 @@
 # DIY 配置工作台（diy-tools）
 
-用于 DIY 整机配置维护、配件成本管理、配置图编辑与导出、ERP 库存读取和多人云同步的 Windows 桌面工具。当前 Python 桌面版为 **0.3.3**；仓库同时保留 Node/Electron 原型和共享业务规则。
+用于 DIY 整机配置维护、配件成本管理、配置图编辑与导出、ERP 库存读取和多人云同步的 Windows 桌面工具。当前 Python 桌面版为 **0.3.4**；仓库同时保留 Node/Electron 原型和共享业务规则。
 
 ## 下载 Windows 程序
 
-[下载最新 Release](https://github.com/yamakaze1234/diy-tools/releases/latest) · [v0.3.3 发布页](https://github.com/yamakaze1234/diy-tools/releases/tag/v0.3.3)
+[下载最新 Release](https://github.com/yamakaze1234/diy-tools/releases/latest) · [v0.3.4 发布页](https://github.com/yamakaze1234/diy-tools/releases/tag/v0.3.4)
 
 下载 Release 中的 Windows ZIP，完整解压后运行 EXE，无需安装 Python/Node。公开包使用云配置占位模板，需按[部署说明](docs/部署与开发.md)配置自己的云环境和成员账号；包内不含现有团队数据。
 
@@ -16,17 +16,13 @@
 - [维护与排错](docs/维护与排错.md)：备份、升级、迁移、恢复及常见问题。
 - [交互架构图](docs/diagrams/architecture.html)：下载后在浏览器打开。
 
-```mermaid
-flowchart LR
-  UI[WebView2 界面] --> API[Python 本机服务]
-  API --> Local[(本机 SQLite / JSON)]
-  API --> Rules[QuickJS 业务规则]
-  API --> ERP[(ERP SQL Server)]
-  API --> Sync[后台同步]
-  Sync --> Cloud[CloudBase 云函数]
-  Cloud --> PG[(PostgreSQL)]
-  Sync --> Assets[图片存储]
-```
+## 整体架构
+
+![DIY 配置工作台系统架构](docs/diagrams/architecture.png)
+
+[打开可交互架构图](docs/diagrams/architecture.html) · [下载 HTML 后在浏览器中打开](https://raw.githubusercontent.com/yamakaze1234/diy-tools/main/docs/diagrams/architecture.html)
+
+支持主题切换、缩放、搜索和导出。GitHub 首页直接展示上方预览图；交互功能在下载的 HTML 中使用。
 
 ## 功能
 

@@ -5,6 +5,32 @@ import {projectWorkspace,applyWorkspace,changesBetween} from '../workspace-recor
 import {validateWorkspaceRecord} from '../workspace-validation.mjs';
 import {mergeEditingState,sameEditingState} from '../workspace-ui-merge.js';
 const fixture=()=>({configs:[{id:'c',shopId:'intel',name:'配置',price:200,parts:[{slot:'CPU',goodsId:'123',qty:1,tax:15,erp:12},{slot:'空',goodsId:'',qty:0,tax:0,erp:0}]}],templates:[{id:'t',name:'模板'}],sourceCatalog:[{sourceId:'s',shopId:'intel',goodsId:'123',name:'CPU',tax:15,erp:12}],costSource:[{goodsId:'123',name:'CPU',tax:15,erp:12,stockAvailable:5}],shopSettings:{intel:{coupon:5}},caseGallery:[],erpSync:{scope:'test',total:1},revision:1});
+test('商品分组后删除配置不误报冲突，真正的并发编辑仍被拦截',()=>{
+ const initial=fixture();initial.configs=['a','b','c'].map((id,i)=>({...structuredClone(initial.configs[0]),id,productId:i===1?'other':'same'}));
+ const store=new SyncStore(':memory:',{protocolVersion:2,validate:validateWorkspaceRecord});
+ try{
+  store.editMany(projectWorkspace(initial));
+  const before=applyWorkspace(initial,store.list());
+  assert.deepEqual(before.configs.map(c=>c.id),['a','c','b']);
+  assert.deepEqual(changesBetween(before,before),[]);
+  const after=structuredClone(before);after.configs.find(c=>c.id==='c').deletedAt='2026-09-17T08:00:00.000Z';
+  const changes=changesBetween(before,after);assert.equal(changes.length,1);
+  store.editMany(changes);assert.ok(store.get('configuration','c').draft.deletedAt);
+  store.editMany(projectWorkspace(initial));
+  const concurrent=store.get('configuration','c').draft;concurrent.name='其他页面修改';store.editMany([{type:'configuration',id:'c',data:concurrent}]);
+  assert.throws(()=>store.editMany(changes),/\$record/);
+ }finally{store.close();}
+});
+test('旧记录没有排序字段时可直接删除并保留可恢复内容',()=>{
+ const store=new SyncStore(':memory:',{protocolVersion:2,validate:validateWorkspaceRecord});
+ try{
+  const initial=fixture(),records=projectWorkspace(initial);for(const r of records)if(r.type==='configuration')delete r.data.workspaceOrder;
+  store.editMany(records);const before=applyWorkspace(initial,store.list()),after=structuredClone(before);
+  after.configs[0].deletedAt='2026-09-17T08:00:00.000Z';store.editMany(changesBetween(before,after));
+  assert.equal(store.get('configuration','c').draft.deletedAt,after.configs[0].deletedAt);
+  assert.equal(store.get('configuration','c').draft.parts[0].tax,15);
+ }finally{store.close();}
+});
 test('unchanged local receipt skips rebase, but remote business edits still require merge',()=>{const a=fixture(),b=fixture();b.revision=99;b.logs=[{message:'saved'}];assert.equal(sameEditingState(a,b),true);b.configs[0].name='remote edit';assert.equal(sameEditingState(a,b),false);b.configs=a.configs;b.shopSettings.intel.coupon=10;assert.equal(sameEditingState(a,b),false);});
 test('配置/共享成本投影往返保留金额、空槽位和稳定行 ID',()=>{const s=fixture(),records=projectWorkspace(s);records.forEach(r=>validateWorkspaceRecord(r.type,r.id,r.data));const result=applyWorkspace(s,records);assert.equal(result.configs[0].parts[1].tax,0);assert.equal(result.configs[0].price,200);assert.equal(result.configs[0].parts[0].tax,15);assert.deepEqual(projectWorkspace(result),records);});
 test('人工成本变化仅提交共享人工价，不提交库存分块',()=>{const before=fixture(),after=fixture();after.costSource[0].tax=17;after.configs[0].parts[0].tax=17;after.sourceCatalog[0].tax=17;assert.deepEqual(changesBetween(before,after).map(r=>r.type),['component']);const store=new SyncStore(':memory:',{protocolVersion:2,validate:validateWorkspaceRecord});store.editMany(projectWorkspace(after));const batch=store.nextBatch();const types=batch.map(r=>r.payload.entityType);assert.ok(!types.includes('erp_snapshot')&&!types.includes('erp_chunk'));store.close();});

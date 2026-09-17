@@ -3,9 +3,9 @@
   "diagram_type": "architecture",
   "meta": {
     "title": "DIY 配置工作台 · 系统架构",
-    "subtitle": "Python 桌面版 0.3.3 | 普通编辑先保存本机，云端同步独立调度",
+    "subtitle": "Python 桌面版 0.3.4 | 普通编辑先保存本机，云端同步独立调度",
     "quality_profile": "showcase",
-    "visual_preset": "blueprint"
+    "visual_preset": "classic"
   },
   "components": [
     {

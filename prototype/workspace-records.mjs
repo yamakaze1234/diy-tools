@@ -10,7 +10,9 @@ const cents=v=>v==null?null:Math.round(v*100);
 export function projectWorkspace(state){
  const records=[],scope=state.sharedCostScope||state.erpSync?.scope||'unbound',seen=new Set(),componentIds=new Set((state.costSource||[]).map(c=>c.goodsId));
  const add=(type,id,data)=>{const key=recordKey(type,id);if(seen.has(key))throw Error('重复记录 ID：'+id);seen.add(key);records.push({type,id,data:stripLocalErp(data)});};
- for(const [index,c] of (state.configs||[]).entries()){const d=copy(c);d.workspaceOrder=index;d.priceCents=cents(d.price);delete d.price;for(const k of ['deletionSessionId','updatedAt','taxUpdatedAt','erpImportedAt'])delete d[k];d.parts=d.parts.map((p,i)=>({...(!componentIds.has(p.goodsId)||c.deletedAt?copy(p):strip(p)),lineId:p.lineId||'line-'+hash([c.id,i,p.slot]).slice(0,24)}));add('configuration',c.id,d);}
+ // Product grouping can change array positions without changing the saved order.
+ // Keep that order in the edit baseline so deletion does not look concurrent.
+ for(const [index,c] of (state.configs||[]).entries()){const d=copy(c);d.workspaceOrder=Number.isFinite(c.workspaceOrder)?c.workspaceOrder:index;d.priceCents=cents(d.price);delete d.price;for(const k of ['deletionSessionId','updatedAt','taxUpdatedAt','erpImportedAt'])delete d[k];d.parts=d.parts.map((p,i)=>({...(!componentIds.has(p.goodsId)||c.deletedAt?copy(p):strip(p)),lineId:p.lineId||'line-'+hash([c.id,i,p.slot]).slice(0,24)}));add('configuration',c.id,d);}
  for(const c of state.costSource||[])if(!c.localInventoryOnly||c.tax!=null)add('component',`${scope}|${c.goodsId}`,{erpScopeId:scope,goodsId:c.goodsId,name:c.name,taxCents:cents(c.tax)});
  for(const s of state.sourceCatalog||[])add('source',s.sourceId,componentIds.has(s.goodsId)?strip(s):copy(s));
  for(const t of state.templates||[])add('template',t.id,copy(t));
@@ -40,8 +42,12 @@ export function applyWorkspace(template,records){
 }
 export function changesBetween(before,after){
  const old=new Map(projectWorkspace(before).map(r=>[recordKey(r.type,r.id),r])),fresh=projectWorkspace(after),changes=[];
+ // Legacy records have no saved order. Do not invent one in the comparison
+ // baseline: it would make an unchanged stored record appear remotely edited.
+ const legacyOrder=new Set((before.configs||[]).filter(c=>!Number.isFinite(c.workspaceOrder)).map(c=>c.id));
  for(const r of fresh){const prev=old.get(recordKey(r.type,r.id));if(!prev||!equal(prev.data,r.data))changes.push({...r,expectedDraft:prev?.data});old.delete(recordKey(r.type,r.id));}
  for(const r of old.values())if(!['erp_chunk','erp_snapshot'].includes(r.type))changes.push({...r,data:{...r.data,deletedAt:new Date().toISOString()},expectedDraft:r.data});
+ for(const change of changes)if(change.type==='configuration'&&legacyOrder.has(change.id)&&change.expectedDraft)delete change.expectedDraft.workspaceOrder;
  return changes;
 }
 export function migrationSummary(state){const records=projectWorkspace(state),roundtrip=applyWorkspace(state,records);const issues=[];

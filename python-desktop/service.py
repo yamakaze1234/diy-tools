@@ -14,6 +14,7 @@ from store import Store, History
 from cloud import Cloud
 from credentials import Credentials
 from sql_service import settings, normalize, read_bundle
+from product_jobs import ProductJobs
 
 
 class Service:
@@ -25,6 +26,7 @@ class Service:
             (self.local / name).mkdir(exist_ok=True)
         self.backup_upgrade()
         self.domain = Domain(self.root)
+        self.product_jobs = ProductJobs(lambda value: self.domain('parseStandardProduct', value))
         self.config = None
         for line in (self.root / 'web' / '.env.local').read_text(encoding='utf-8').splitlines():
             if line.startswith('CLOUDBASE_PUBLIC_CONFIG='):
@@ -46,6 +48,22 @@ class Service:
         atomic(file, dumps(self.state))
         self.history.record(self.state, self.scope(), '启动 Python 工作台')
         self.cloud = Cloud(self, transport)
+        self.save_standard_products(self.state)
+
+    def save_standard_products(self, state):
+        """Business JSON stays independent of poster settings; index gates future matching."""
+        products = self.domain('standardProducts', state)
+        directory = self.local / 'products-standard'
+        directory.mkdir(exist_ok=True)
+        entries = []
+        for product in products:
+            filename = digest(dumps([product['shopId'], product['productId']]))[:24] + '.json'
+            raw = dumps(product['data'])
+            atomic(directory / filename, raw)
+            entries.append({**{k: v for k, v in product.items() if k != 'data'}, 'file': filename, 'sha256': digest(raw)})
+        index = dict(format=1, contract='CoreHub/pypkgs#13', revision=state.get('revision', 0), sourceHash=digest(dumps(state)), links=entries)
+        atomic(directory / 'index.json', dumps(index))
+        return index
 
     def backup_upgrade(self):
         marker = self.local / 'python-backend-migration.json'
@@ -80,6 +98,7 @@ class Service:
                 self.store.log_local([dict(type=c['type'], id=c['id'], before=c.get('expectedDraft'), after=c['data']) for c in changes], self.cloud.audit_actor())
         self.state = value
         self.history.record(value, self.scope(), reason)
+        self.save_standard_products(value)
 
     def actor(self, value):
         return str(value or self.session['defaultOperator']).strip()[:60] or self.session['defaultOperator']
@@ -88,8 +107,15 @@ class Service:
         with self.lock:
             self.cloud.require_login(cookie)
             state = self.state
-            if incoming.get('baseRevision') != state['revision'] and not (self.cloud.enabled() and incoming.get('baseState')):
-                raise AppError('其他页面已经保存更新，请先下载当前草稿，再重新载入。', 409)
+            if incoming.get('baseRevision') != state['revision']:
+                base = incoming.get('baseState')
+                if not isinstance(base, dict):
+                    raise AppError('其他页面已经保存更新，请先下载当前草稿，再重新载入。', 409)
+                merged = self.domain('mergeEditingState', base, incoming, state)
+                if merged['conflict']:
+                    raise AppError('同一字段已被修改，当前草稿已保留，请比较后选择保存版本。', 409)
+                incoming = {**incoming, **{k: merged['state'][k] for k in ('configs', 'templates', 'sourceCatalog', 'costSource', 'caseGallery', 'shopSettings')}, 'baseState': state}
+
             configs, templates = incoming.get('configs'), incoming.get('templates')
             if not isinstance(configs, list) or (not configs and state.get('configs')) or len(configs) > 500 or not isinstance(templates, list):
                 raise AppError('配置数据格式不正确')
@@ -121,8 +147,15 @@ class Service:
                 value = incoming['shopSettings']
                 if not isinstance(value, dict) or any(not isinstance(value.get(k), dict) or not numeric(value[k].get('coupon')) for k in shop_ids):
                     raise AppError('店铺优惠券金额无效')
+                if any('serviceText' in value[k] and (not isinstance(value[k]['serviceText'], str) or len(value[k]['serviceText']) > 1000) for k in shop_ids):
+                    raise AppError('默认服务承诺无效')
+                for entry in value.values():
+                    if 'erpShopId' in entry and (not isinstance(entry['erpShopId'], str) or entry['erpShopId'] and not re.fullmatch(r'\d{1,30}', entry['erpShopId'])):
+                        raise AppError('ERP 店铺 ID 无效')
+                    if 'erpShopName' in entry and (not isinstance(entry['erpShopName'], str) or len(entry['erpShopName']) > 200):
+                        raise AppError('ERP 店铺名称无效')
             for config in configs:
-                if not isinstance(config, dict) or config.get('shopId') not in shop_ids or config.get('installment', 0) not in (0, 12, 24) or not isinstance(config.get('addons'), list) or not isinstance(config.get('parts'), list):
+                if not isinstance(config, dict) or config.get('shopId') not in shop_ids or config.get('installment', 0) not in (0, 12, 24) or not isinstance(config.get('addons'), list) or not isinstance(config.get('parts'), list) or ('actualParts' in config and not isinstance(config['actualParts'], list)):
                     raise AppError('配置店铺、配件、分期或加购格式无效')
                 for addon in config['addons']:
                     self.domain('validateAddon', addon)
@@ -145,7 +178,7 @@ class Service:
             next_state['logs'] = self.domain('recentActivity', [e for e in events if e] + state.get('logs', []))
             next_state = self.cloud.persist(state, next_state, incoming.get('baseState', state))
             self.save(next_state, message)
-            return dict(revision=self.state['revision'], updatedAt=self.state['updatedAt'], logs=self.state['logs'], **({'state': self.state} if self.cloud.enabled() else {}))
+            return dict(revision=self.state['revision'], updatedAt=self.state['updatedAt'], logs=self.state['logs'], state=self.state)
 
     def sql_preview(self, data, cookie):
         config = settings(data.get('settings'))
@@ -218,6 +251,11 @@ class Service:
         with self.lock:
             if not self.cloud.token:
                 raise AppError('请先登录工作台成员账号', 401)
+            if action.startswith('product-'):
+                if time.time() >= self.cloud.expires or self.cloud.auth_changing:
+                    raise AppError('工作台登录已过期或正在切换账号', 401)
+                self.product_jobs.session(self.cloud.cookie)
+                return self.product_jobs.collect(action[len('product-'):], data)
             info = self.state.get('erpSync')
             if action != 'snapshot':
                 return self.domain('erpJob', {'error': 'fail'}.get(action, action), data, info)

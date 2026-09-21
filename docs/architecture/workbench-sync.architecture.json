@@ -1,0 +1,332 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "DIY 配置工作台 · 同步架构",
+    "subtitle": "Python 0.3.3 · 本机修改留痕 / 云端提交记录 / 只读三方对比 · 已打包",
+    "quality_profile": "showcase",
+    "visual_preset": "classic",
+    "animation": "none",
+    "viewBox": [
+      1430,
+      850
+    ]
+  },
+  "components": [
+    {
+      "id": "workbench",
+      "type": "frontend",
+      "label": "配置工作台",
+      "sublabel": "pywebview / WebView2",
+      "pos": [
+        60,
+        260
+      ],
+      "size": [
+        190,
+        80
+      ]
+    },
+    {
+      "id": "local-state",
+      "type": "database",
+      "label": "本机状态与草稿",
+      "sublabel": "SQLite + state.json",
+      "pos": [
+        320,
+        260
+      ],
+      "size": [
+        190,
+        80
+      ]
+    },
+    {
+      "id": "sync-worker",
+      "type": "backend",
+      "label": "后台同步线程",
+      "sublabel": "每 2 小时 / 手动 · 等回执再拉取",
+      "pos": [
+        580,
+        260
+      ],
+      "size": [
+        190,
+        80
+      ]
+    },
+    {
+      "id": "cloud-api",
+      "type": "cloud",
+      "label": "workbenchApi",
+      "sublabel": "CloudBase 云函数 / RPC",
+      "pos": [
+        900,
+        260
+      ],
+      "size": [
+        190,
+        80
+      ]
+    },
+    {
+      "id": "shared-db",
+      "type": "database",
+      "label": "PostgreSQL",
+      "sublabel": "事务写入记录、版本及变更日志",
+      "pos": [
+        1160,
+        260
+      ],
+      "size": [
+        190,
+        80
+      ]
+    },
+    {
+      "id": "local-audit",
+      "type": "database",
+      "label": "本机修改记录",
+      "sublabel": "编号 / 本机时间 / 登录成员",
+      "pos": [
+        320,
+        60
+      ],
+      "size": [
+        190,
+        80
+      ]
+    },
+    {
+      "id": "local-files",
+      "type": "database",
+      "label": "本机文件与导出",
+      "sublabel": "原图缓存 / PNG / ZIP",
+      "pos": [
+        60,
+        460
+      ],
+      "size": [
+        190,
+        80
+      ]
+    },
+    {
+      "id": "outbox",
+      "type": "messagebus",
+      "label": "提交队列与合并",
+      "sublabel": "固定提交 ID / 三方合并",
+      "pos": [
+        320,
+        460
+      ],
+      "size": [
+        190,
+        80
+      ]
+    },
+    {
+      "id": "readonly-compare",
+      "type": "backend",
+      "label": "只读三方对比",
+      "sublabel": "同步基准 / 本机 / 云端",
+      "pos": [
+        580,
+        60
+      ],
+      "size": [
+        190,
+        80
+      ]
+    },
+    {
+      "id": "asset-storage",
+      "type": "cloud",
+      "label": "云端原图存储",
+      "sublabel": "上传去重 / 下载按需缓存",
+      "pos": [
+        900,
+        460
+      ],
+      "size": [
+        190,
+        80
+      ]
+    },
+    {
+      "id": "member-auth",
+      "type": "security",
+      "label": "成员身份与工作区",
+      "sublabel": "校验令牌 / 限定工作区",
+      "pos": [
+        1160,
+        60
+      ],
+      "size": [
+        190,
+        80
+      ]
+    },
+    {
+      "id": "cloud-commits",
+      "type": "database",
+      "label": "云端提交记录",
+      "sublabel": "编号 / 服务器时间 / 成员 ID",
+      "pos": [
+        1160,
+        460
+      ],
+      "size": [
+        190,
+        80
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "本机 Python 桌面端 · 编辑先落盘，网络由后台处理",
+      "wraps": [
+        "workbench",
+        "local-state",
+        "sync-worker",
+        "local-files",
+        "outbox",
+        "local-audit",
+        "readonly-compare"
+      ],
+      "pad": 26
+    },
+    {
+      "kind": "region",
+      "label": "CloudBase · 成员共享工作区",
+      "wraps": [
+        "cloud-api",
+        "shared-db",
+        "asset-storage",
+        "member-auth",
+        "cloud-commits"
+      ],
+      "pad": 26
+    }
+  ],
+  "connections": [
+    {
+      "id": "edit-save",
+      "from": "workbench",
+      "to": "local-state",
+      "variant": "emphasis"
+    },
+    {
+      "id": "read-drafts",
+      "from": "local-state",
+      "to": "sync-worker",
+      "variant": "emphasis"
+    },
+    {
+      "id": "sync-rpc",
+      "from": "sync-worker",
+      "to": "cloud-api",
+      "label": "HTTPS",
+      "variant": "emphasis"
+    },
+    {
+      "id": "rpc-store",
+      "from": "cloud-api",
+      "to": "shared-db",
+      "variant": "emphasis"
+    },
+    {
+      "id": "local-export",
+      "from": "workbench",
+      "to": "local-files",
+      "label": "本机生成",
+      "labelDy": 64
+    },
+    {
+      "id": "durable-queue",
+      "from": "local-state",
+      "to": "outbox",
+      "label": "保留待提交",
+      "labelDy": 64
+    },
+    {
+      "id": "original-assets",
+      "from": "sync-worker",
+      "to": "asset-storage",
+      "variant": "dashed"
+    },
+    {
+      "id": "workspace-access",
+      "from": "member-auth",
+      "to": "shared-db",
+      "label": "身份校验",
+      "variant": "security",
+      "labelDy": 64
+    },
+    {
+      "id": "save-audit",
+      "from": "local-state",
+      "to": "local-audit"
+    },
+    {
+      "id": "compare-local",
+      "from": "local-state",
+      "to": "readonly-compare",
+      "fromSide": "right",
+      "toSide": "left",
+      "variant": "dashed"
+    },
+    {
+      "id": "compare-cloud",
+      "from": "readonly-compare",
+      "to": "cloud-api",
+      "fromSide": "right",
+      "toSide": "left",
+      "variant": "dashed"
+    },
+    {
+      "id": "server-audit",
+      "from": "shared-db",
+      "to": "cloud-commits"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "后台异步，提交与拉取严格有序",
+      "items": [
+        "编辑先保存在本机；自动每 2 小时同步，也可点击立即同步。",
+        "一轮：上传原图 → 提交修改 → 等待写入成功回执 → 拉取固定版本范围 → 合并本机。",
+        "未确认提交则停止，保留原提交编号重试；拉取开始后别人新提交的数据下轮接收。"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "本机与云端各自留痕",
+      "items": [
+        "本机：每次保存同步业务字段记录 UUID、本机时间、登录成员及修改前后内容。",
+        "云端：复用 mutationId、服务器时间、成员 ID 和版本；每条业务记录独立提交。",
+        "本机修改记录与云端提交编号各自独立；本机保存不表示已上传，旧本机修改不补造。"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "只读对比，不触发同步",
+      "items": [
+        "入口：多人同步 → 修改与提交记录；可看本机记录、云端记录和字段差异。",
+        "对照上次同步基准、本机当前草稿与固定云端快照；标出双方变更及冲突字段。",
+        "查看不上传、不覆盖本机、不推进同步游标；网络读取期间本机变化则重新比较。"
+      ]
+    },
+    {
+      "dot": "orange",
+      "title": "共享边界与多人协作",
+      "items": [
+        "共享配置、人工核算价、店铺设置、模板、输出源、机箱图库及原图；ERP 成本、库存、PNG / ZIP 仅本机。",
+        "不同顶层字段可合并；同字段冲突需选择，配件列表按整体比较。时间不决定覆盖顺序。",
+        "两台电脑各自计时；甲先上传，乙再同步接收。其他成员姓名未返回时展示成员 ID。"
+      ]
+    }
+  ]
+}

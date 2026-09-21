@@ -6,5 +6,19 @@ export function pricing(config,settings={}){
  const rate=term===12?.06:term===24?.1:0;
  return{arrival,coupon,listPrice:(Math.round(arrival*100)+Math.round(coupon*100))/100,term,rate,fee:Math.round(arrival*100*rate)/100};
 }
-export function pricingColumn(configs,settings){if(!configs.length)throw Error('请先勾选配置');return configs.map(c=>pricing(c,settings).listPrice.toFixed(2)).join('\r\n');}
+export function pricingColumn(configs,settings){if(!configs.length)throw Error('请先勾选配置');return configs.map(c=>Math.round(pricing(c,settings).listPrice).toString()).join('\r\n');}
 export const sessionDeleted=(configs,sessionId)=>configs.filter(c=>c.deletedAt&&c.deletionSessionId===sessionId);
+
+// A null term means legacy configurations disagree; require an explicit choice.
+export function productInstallment(configs=[]){
+ const terms=new Set(configs.filter(c=>!c.deletedAt).map(c=>Number(c.installment??0)));
+ if(!terms.size)return 0;
+ const [term]=terms;
+ return terms.size===1&&[0,12,24].includes(term)?term:null;
+}
+export function applyProductInstallment(configs,product,term){
+ if(![0,12,24].includes(term))throw Error('请选择不分期、12 期或 24 期');
+ const ids=[];
+ for(const c of configs)if(!c.deletedAt&&c.shopId===product.shopId&&c.productId===product.id){c.installment=term;ids.push(c.id);}
+ return ids;
+}

@@ -1,13 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
+import {seed,legacyRow} from './fixtures/workspace.mjs';
 import {erpRow,copyText,totals,fromTemplate,modulesDefault,normalizeProducts,productGroups,productTemplate,templateConfigs,importTemplateConfigs,blankConfig,liveConfigs,deleteConfigs,restoreConfigs} from '../core.js';
 import {suggestedName} from '../legacy-names.js';
 import {makeZip} from '../zip.js';
 import {sourceCatalog,bindSources,sourceDiff,syncSource,replaceSourcePart} from '../source.js';
 import {posterModules,posterParts,applyPosterStyle} from '../core.js';
-const seed=JSON.parse(fs.readFileSync(new URL('../seed.json',import.meta.url)));
-const legacy=JSON.parse(fs.readFileSync(new URL('../../现有工具输出契约核验.json',import.meta.url)));
+
 
 test('旧配置补入服务承诺时保留原模块，重复载入不重复添加或覆盖隐藏状态',()=>{
  const old=[{id:'notes',type:'custom',text:'保留内容',visible:false,color:'#abcdef'},{id:'footer',type:'footer',text:'原说明'}],before=structuredClone(old);
@@ -43,9 +42,9 @@ test('只同步配色不覆盖字号版式，只同步格式不覆盖配色',()=
 });
 test('横向输出逐格兼容已记录 V5 纯函数结果',()=>{
  const parts=[['CPU','10001',1],['内存','10002',2],['电源','10003',1],['风扇','10004',8]].map(([slot,goodsId,qty])=>({slot,goodsId,qty}));
- assert.deepEqual(erpRow({parts}),legacy.checks.firstRow);
+ assert.deepEqual(erpRow({parts}),legacyRow);
 });
-test('真实样例成本，单价乘数量及利润',()=>{const t=totals(seed.configs[0]);assert.equal(t.erp,6520);assert.equal(t.tax,6440);assert.equal(t.basis,6797.6);assert.equal(t.taxProfit,-98.6);assert.equal(t.erpProfit,45.02);});
+test('合成样例成本，单价乘数量及利润',()=>{const t=totals(seed.configs[0]);assert.equal(t.erp,6520);assert.equal(t.tax,6440);assert.equal(t.basis,6797.6);assert.equal(t.taxProfit,-98.6);assert.equal(t.erpProfit,45.02);});
 test('同一配件行保持 ID/数量对应，不采用来源 AA/AB 错位引用',()=>{const row=erpRow(seed.configs[0]);assert.equal(row.length,56);assert.equal(row[24],'383029');assert.equal(row[26],'1');assert.equal(row[32],'375660');assert.equal(row[34],'8');assert.equal(row[14],'2');});
 test('SPU/SKU 字符串精度与空 ID 阻止复制',()=>{const c={...seed.configs[0],skuId:'3682299409011548'};assert.equal(copyText([c,c],'sku'),'3682299409011548\r\n3682299409011548');assert.equal(copyText([c],'spu'),'3797170100491124774');assert.throws(()=>copyText(seed.configs.slice(0,1),'sku'),/尚未填写/);});
 test('模板调用清空平台身份而保留配件和样式',()=>{const source={...seed.configs[0],modules:modulesDefault(),skuId:'3682299409011548'};const c=fromTemplate({name:'测试模板',config:source});assert.equal(c.spu,'');assert.equal(c.skuId,'');assert.notEqual(c.id,source.id);assert.deepEqual(c.parts,source.parts);c.parts[0].qty=3;assert.equal(source.parts[0].qty,1);});
@@ -55,7 +54,7 @@ test('ZIP 中文文件名与长度记录可读取',async()=>{const blob=makeZip(
 test('旧数据按链接归组，SPU 修改后组身份保持稳定',()=>{const configs=normalizeProducts(structuredClone(seed.configs));const firstId=configs[0].productId;assert.equal(productGroups(configs).length,1);configs[0].spu='999';normalizeProducts(configs);assert.equal(configs[0].productId,firstId);assert.equal(productGroups(configs).length,1);});
 test('整组模板保存完整独立快照并兼容旧单配置模板',()=>{const source=structuredClone(seed.configs.slice(0,3));const template=productTemplate(source,'整组');assert.equal(templateConfigs(template).length,3);source[0].parts[0].qty=99;assert.notEqual(template.configs[0].parts[0].qty,99);assert.equal(templateConfigs({config:source[0]}).length,1);});
 test('选择多套模板配置导入到新链接，不复制旧 SKU 或旧 SPU',()=>{const source=structuredClone(seed.configs.slice(0,3));source.forEach(c=>c.skuId='3682299409011548');const imported=importTemplateConfigs([source[0],source[2]],{id:'new-link',name:'新链接',spu:'3797170100491124999',url:'https://example.com'});assert.equal(imported.length,2);assert.equal(new Set(imported.map(c=>c.id)).size,2);for(const c of imported){assert.equal(c.skuId,'');assert.equal(c.spu,'3797170100491124999');assert.equal(c.productId,'new-link');assert.ok(!source.some(s=>s.id===c.id));}imported[0].parts[0].qty=99;assert.notEqual(source[0].parts[0].qty,99);assert.equal(importTemplateConfigs([source[0]],{id:'blank',name:'空链接'})[0].spu,'');});
-test('空白配置不继承旧成本、平台身份或加购，仅保留展示样式',()=>{const c=blankConfig(seed.configs[0],{id:'new',name:'新链接'});assert.equal(c.price,0);assert.equal(c.spu,'');assert.equal(c.skuId,'');assert.equal(c.parts.length,8);assert.ok(c.parts.every(p=>!p.name&&!p.goodsId&&p.erp===null&&p.tax===null));assert.deepEqual(c.addons,[]);assert.deepEqual(c.modules,seed.configs[0].modules);});
+test('空白配置不继承旧成本、平台身份或加购，仅保留展示样式',()=>{const c=blankConfig(seed.configs[0],{id:'new',name:'新链接'});assert.equal(c.price,0);assert.equal(c.spu,'');assert.equal(c.skuId,'');assert.equal(c.parts.length,8);assert.ok(c.parts.every(p=>!p.name&&!p.goodsId&&p.erp===null&&p.tax===null));assert.deepEqual(c.addons,[]);assert.deepEqual(c.modules,seed.configs[0].modules||modulesDefault(c.shopId,c.theme));});
 test('单项、批量及全部删除均可恢复原始配件和平台身份',()=>{const configs=structuredClone(seed.configs.slice(0,3));configs[0].skuId='3682299409011548';const before=structuredClone(configs);assert.equal(deleteConfigs(configs,[configs[0].id,configs[2].id]),2);assert.deepEqual(liveConfigs(configs).map(c=>c.id),[configs[1].id]);assert.equal(deleteConfigs(configs,[configs[0].id]),0);deleteConfigs(configs,configs.map(c=>c.id));assert.equal(liveConfigs(configs).length,0);const reloaded=JSON.parse(JSON.stringify(configs));restoreConfigs(reloaded,reloaded.map(c=>c.id));assert.deepEqual(reloaded,before);});
 test('按原表 D2/E2 利润公式随到手价和配件数量计算',()=>{const c=structuredClone(seed.configs[0]);c.price=7999;assert.equal(totals(c).taxProfit,1201.4);assert.equal(totals(c).erpProfit,1319.02);c.parts[0].qty+=1;assert.equal(totals(c).taxProfit,-254.6);assert.equal(totals(c).erpProfit,-80.98);});
 test('全删后新建配置不会继承删除标记',()=>{const source=structuredClone(seed.configs[0]);source.deletedAt='2026-09-14';assert.equal(blankConfig(source,{id:'new',name:'新链接'}).deletedAt,undefined);assert.equal(importTemplateConfigs([source],{id:'new',name:'新链接'})[0].deletedAt,undefined);});

@@ -1,5 +1,7 @@
 """CloudBase transport and background synchronization; no UI-thread network I/O."""
 import re
+import copy
+import hashlib
 import threading
 import time
 from urllib.parse import quote
@@ -45,7 +47,7 @@ class Cloud:
         self.require_login(cookie)
         return dumps([self.member['workspaceId'], self.member['uid']])
 
-    def call(self, action, payload=None, token=None):
+    def call(self, action, payload=None, token=None, retried=False):
         token = token or self.token
         if not token:
             raise AppError('请先登录成员账号', 401)
@@ -56,15 +58,23 @@ class Cloud:
         if not config or not re.fullmatch('[a-z0-9-]+', config.get('envId', '')) or config.get('functionName') != 'workbenchApi':
             raise AppError('云端配置无效')
         url = f"https://{config['envId']}.api.tcloudbasegateway.com/v1/functions/workbenchApi"
+        body = {**request, 'accessToken': token}
+        if action == 'records.commits':
+            url = f"https://{config['envId']}.api.tcloudbasegateway.com/v1/rdb/rest/rpc/wa_commit_history"
+            body = dict(request=request)
         try:
-            response = requests.post(url, headers={'Authorization': 'Bearer ' + token}, json={**request, 'accessToken': token}, timeout=(10, 30))
+            response = requests.post(url, headers={'Authorization': 'Bearer ' + token}, json=body, timeout=(10, 30))
             result = response.json()
         except (requests.RequestException, ValueError):
             raise AppError('云端连接超时或返回无效，请检查网络后重试') from None
         if response.status_code == 401 or result.get('code') == 'UNAUTHENTICATED':
             with self.s.lock:
+                renewed = self.token if token != self.token else None
+            if renewed and not retried:
+                return self.call(action, payload, renewed, retried=True)
+            with self.s.lock:
                 if token == self.token:
-                    self.token = self.member = None
+                    self.token = None
             raise AppError('登录已过期，请重新登录', 401, 'UNAUTHENTICATED')
         if not response.ok:
             raise AppError(f'云端请求失败（{response.status_code}）')
@@ -142,9 +152,11 @@ class Cloud:
 
     def begin_cycle(self):
         """Called under the service lock; edits never advance the cloud deadline."""
-        if self.running or not self.token or time.time() >= self.expires or self.auth_changing or not self.enabled():
+        if self.running or not self.token or time.time() >= self.expires or self.auth_changing:
             return None
         if not self.manual_requested and (self.paused or time.time() * 1000 < self.next_auto_sync):
+            return None
+        if not self.enabled():
             return None
         self.manual_requested = False
         self.next_auto_sync = int((time.time() + AUTO_SYNC_SECONDS) * 1000)
@@ -184,12 +196,14 @@ class Cloud:
             before = self.s.store.meta('cursor') or 0
             pending = self.s.store.status()['pending']
             state = self.s.state  # States are replaced, never mutated outside the lock.
-            self.progress = dict(phase='upload', cursor=before)
+            self.progress = dict(phase='upload', cursor=before, uploaded=0, uploadTotal=pending, downloaded=0, downloadTotal=None)
         self.upload_assets(state, token)
         for _ in range(1000):
             with self.s.lock:
                 self.check_cycle(epoch)
+                token = self.token
                 batch = self.s.store.next_batch()
+                self.progress['uploadTotal'] = max(self.progress['uploadTotal'], self.progress['uploaded'] + len(batch))
             if not batch:
                 break
             response = self.call('sync.pushBatch', dict(requests=batch), token)
@@ -198,6 +212,7 @@ class Cloud:
             with self.s.lock:
                 # Acknowledge confirmed receipts even if logout was requested in flight.
                 self.s.store.acknowledge(batch, response.get('results'))
+                self.progress['uploaded'] += sum(bool(r.get('ok')) for r in response.get('results', []))
         with self.s.lock:
             if self.s.store.status()['uncertain']:
                 raise AppError('提交结果待确认')
@@ -205,6 +220,7 @@ class Cloud:
         for _ in range(5000):
             with self.s.lock:
                 self.check_cycle(epoch)
+                token = self.token
                 payload = dict(cursor=self.s.store.meta('cursor') or 0, limit=100)
             if head is not None:
                 payload['headSeq'] = head
@@ -216,7 +232,7 @@ class Cloud:
                 raise AppError('同步快照在分页期间变化')
             with self.s.lock:
                 self.s.store.apply_page(page)
-                self.progress = dict(phase='download', cursor=page['nextCursor'], total=head)
+                self.progress.update(phase='download', cursor=page['nextCursor'], total=head, downloaded=page['nextCursor']-before, downloadTotal=max(0, head-before))
             if not page.get('hasMore'):
                 with self.s.lock:
                     if pending or before != self.s.store.meta('cursor') or not self.s.store.db.execute("SELECT 1 FROM meta WHERE key='workspaceState'").fetchone():
@@ -229,7 +245,7 @@ class Cloud:
         if not self.s.store.get('workspace_meta', 'root'):
             return
         current = self.s.state
-        next_state = self.s.domain('applyWorkspace', current, self.s.store.records())
+        next_state = self.s.domain('initializeActualParts', self.s.domain('applyWorkspace', current, self.s.store.records()))
         events = self.s.domain('recentActivity', self.s.store.meta('activity') or [])
         next_state['logs'] = self.s.domain('recentActivity', [r for r in events if r.get('operator') != (self.member or {}).get('memberId')] + current.get('logs', []))
         if self.s.domain('projectWorkspace', current) == self.s.domain('projectWorkspace', next_state) and current.get('logs') == next_state['logs']:
@@ -243,11 +259,20 @@ class Cloud:
             return next_state
         if not self.s.store.get('workspace_meta', 'root'):
             raise AppError('首次云端数据仍在下载，请稍后编辑')
-        changes = self.s.domain('changesBetween', before if expected is None else expected, next_state)
+        baseline = copy.deepcopy(before if expected is None else expected)
+        initial_changes = self.s.domain('changesBetween', baseline, next_state)
+        edited_configs = {c['id'] for c in initial_changes if c['type'] == 'configuration'}
+        # Old records have no BOM field. Migrate once in the same local transaction
+        # as the save, rather than treating the normalized default as already stored.
+        for config in baseline.get('configs', []):
+            stored = self.s.store.get('configuration', config['id'])
+            if config['id'] in edited_configs and stored and 'actualParts' not in stored['draft']:
+                config.pop('actualParts', None)
+        changes = self.s.domain('changesBetween', baseline, next_state)
         merged = []
 
         def materialize():
-            value = self.s.domain('applyWorkspace', next_state, self.s.store.records())
+            value = self.s.domain('initializeActualParts', self.s.domain('applyWorkspace', next_state, self.s.store.records()))
             merged.append(value)
             return value
         self.s.store.edit_many(changes, materialize, actor=self.audit_actor())
@@ -267,18 +292,26 @@ class Cloud:
             local = {(r['type'], r['id']): r for r in self.s.store.records()}
             cursor = self.s.store.meta('cursor') or 0
             revision = self.s.state.get('revision', 0)
+        if action == 'commits':
+            before = data.get('before')
+            if before is not None and (type(before) is not int or before < 1):
+                raise AppError('提交页码无效')
+            result = self.call('records.commits', {} if before is None else dict(before=before), token)
+            with self.s.lock:
+                self.check_cycle(epoch)
+                self.require_login(cookie)
+            if not result.get('ok') or not isinstance(result.get('records'), list):
+                raise AppError('云端记录读取失败，请重试')
+            from store import clean
+            for row in result['records']:
+                row['data'] = clean(row['data'])
+                row['actorName'] = member.get('name') if row.get('actorId') == member.get('memberId') else None
+            return result
         bootstrap = self.call('sync.bootstrap', token=token)
         head = bootstrap.get('headSeq')
         if not bootstrap.get('ok') or type(head) is not int or head < cursor:
             raise AppError('云端版本信息无效，请重试')
-        if action == 'commits':
-            before = data.get('before', head + 1)
-            if type(before) is not int or not 1 <= before <= head + 1:
-                raise AppError('提交页码无效')
-            end = before - 1
-            start = max(0, end - 50)
-        else:
-            start, end = cursor, head
+        start, end = cursor, head
         changes, position = [], start
         while position < end:
             with self.s.lock:
@@ -300,12 +333,6 @@ class Cloud:
             if action == 'compare' and (revision != self.s.state.get('revision', 0) or cursor != (self.s.store.meta('cursor') or 0)):
                 raise AppError('查看期间本机版本已变化，请重新比较')
         from store import clean, keep
-        if action == 'commits':
-            records = [dict(id=c.get('mutationId'), seq=c['seq'], type=c['type'], entityId=c['id'], version=c['version'],
-                            at=c.get('updatedAt'), actorId=c.get('updatedBy'),
-                            actorName=member.get('name') if c.get('updatedBy') == member.get('memberId') else None,
-                            data=clean(c['data'])) for c in reversed(changes) if keep(c['type'])]
-            return dict(records=records, nextBefore=start + 1 if start else None, headSeq=end)
         remote = {(c['type'], c['id']): c for c in changes if keep(c['type'])}
         keys = set(remote) | {k for k, r in local.items() if r['draft'] != r['base']}
         records = []
@@ -388,28 +415,80 @@ class Cloud:
         walk({k: state.get(k) for k in ('configs', 'templates', 'caseGallery')})
         with self.s.lock:
             done = set(self.s.store.meta('uploadedAssets') or [])
-        for url in urls:
-            if self.stopping.is_set() or token != self.token:
-                raise AppError('同步已停止，本机修改保留')
+            epoch = self.epoch
+        for url in sorted(urls):
+            with self.s.lock:
+                self.check_cycle(epoch)
+                token = self.token
+                if not token:
+                    raise AppError('登录已过期，本机修改保留', 401)
             name = self.asset_name(url)
             if name in done:
                 continue
             data = self.download_asset(url, token)
             endpoint = self.asset_endpoint(name)
+            # A previous client may have uploaded the content without retaining
+            # its receipt. Verify first, rather than resending a large original.
+            if self.verify_uploaded_asset(endpoint, name, token):
+                done.add(name)
+                with self.s.lock:
+                    self.check_cycle(epoch)
+                    self.s.store.set_meta('uploadedAssets', sorted(done))
+                continue
             headers = {'Authorization': 'Bearer ' + token, 'Content-Type': 'image/png' if name.endswith('.png') else 'image/jpeg', 'x-upsert': 'false'}
             try:
                 response = requests.post(endpoint, headers=headers, data=data, timeout=(10, 60))
-                if not response.ok:
-                    if response.status_code not in (400, 409):
-                        raise AppError(f'原始图片上传失败（{response.status_code}）')
-                    check = requests.get(endpoint, headers={'Authorization': 'Bearer ' + token}, timeout=(10, 30))
-                    if not check.ok or digest(check.content) != name.split('.')[0]:
-                        raise AppError('原图上传未确认，请重试')
-            except requests.RequestException:
-                raise AppError('原图上传未确认，稍后将校验并继续') from None
+            except requests.RequestException as error:
+                # A lost response does not prove a failed upload. Confirm the
+                # remote bytes before allowing any business records to proceed.
+                if not self.verify_uploaded_asset(endpoint, name, token):
+                    raise AppError(f'原图上传尚未确认（{self.asset_network_reason(error)}），本机原图已保留，请点击立即同步重试') from None
+            else:
+                try:
+                    if not response.ok:
+                        if response.status_code not in (400, 409):
+                            raise AppError(f'原始图片上传失败（HTTP {response.status_code}），本机原图已保留')
+                        if not self.verify_uploaded_asset(endpoint, name, token):
+                            raise AppError('原图上传未确认，云端尚无可校验的原图，本机原图已保留，请重试')
+                finally:
+                    response.close()
             done.add(name)
             with self.s.lock:
+                self.check_cycle(epoch)
                 self.s.store.set_meta('uploadedAssets', sorted(done))
+
+    @staticmethod
+    def asset_network_reason(error):
+        if isinstance(error, requests.exceptions.SSLError):
+            return '证书校验失败'
+        if isinstance(error, requests.exceptions.ProxyError):
+            return '代理连接失败'
+        if isinstance(error, requests.exceptions.Timeout):
+            return '网络超时'
+        return '连接中断'
+
+    def verify_uploaded_asset(self, endpoint, name, token):
+        try:
+            response = requests.get(endpoint, headers={'Authorization': 'Bearer ' + token},
+                                    timeout=(10, 60), stream=True)
+            try:
+                if response.status_code == 404:
+                    return False
+                if not response.ok:
+                    raise AppError(f'原图云端校验失败（HTTP {response.status_code}），本机原图已保留')
+                checksum, size = hashlib.sha256(), 0
+                for block in response.iter_content(chunk_size=256 * 1024):
+                    size += len(block)
+                    if size > 24 * 1024 * 1024:
+                        raise AppError('云端原图超过大小限制，本机原图已保留')
+                    checksum.update(block)
+                if checksum.hexdigest() != name.split('.')[0]:
+                    raise AppError('云端原图与本机校验不一致，未覆盖原图，请检查后重试')
+                return True
+            finally:
+                response.close()
+        except requests.RequestException as error:
+            raise AppError(f'原图云端校验失败（{self.asset_network_reason(error)}），本机原图已保留，请点击立即同步重试') from None
 
     def close(self):
         self.stopping.set()

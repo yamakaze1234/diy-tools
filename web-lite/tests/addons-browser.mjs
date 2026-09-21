@@ -1,0 +1,38 @@
+import {createRequire} from 'node:module';
+import {mkdir,writeFile} from 'node:fs/promises';
+import {fileURLToPath} from 'node:url';
+import assert from 'node:assert/strict';
+import {createDemo} from '../model.mjs';
+const require=createRequire(import.meta.url);
+const {chromium}=require('C:/Users/d1832/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright');
+const out=new URL('../verification/',import.meta.url);await mkdir(out,{recursive:true});
+const browser=await chromium.launch({channel:'chrome',headless:true});
+const context=await browser.newContext({viewport:{width:1600,height:1080}}),page=await context.newPage(),errors=[],checks=[];
+page.on('pageerror',e=>errors.push(e.message));
+const read=()=>page.evaluate(()=>JSON.parse(localStorage.getItem('diy-web-lite-prototype-v1')));
+const shot=name=>page.screenshot({path:fileURLToPath(new URL(name+'.png',out)),fullPage:true});
+const check=name=>{checks.push(name);console.log('PASS: '+name);};
+const source=(s,shop='intel')=>s.sources.find(r=>r.shopId===shop&&r.goodsId==='990005');
+const openCosts=async()=>{await page.locator('[data-action="nav-costs"]').click();await page.locator('#source-shop').selectOption('intel');await page.locator('#cost-query').fill('990005');};
+const openSource=()=>page.locator('[data-action="addon-source"][data-id="990005"]').click();
+const opt=i=>page.locator(`[data-option-index="${i}"]`);
+const preview=()=>page.getByRole('button',{name:'预览并保存输出源',exact:true}).click();
+const saveSource=()=>page.getByRole('button',{name:'确认保存输出源',exact:true}).click();
+const openC2=async()=>{await page.locator('.topbar [data-action="nav-overview"]').click();await page.locator('[data-action="product"][data-id="p1"]').click();await page.locator('#overview-rows [data-action="edit"][data-id="c2"]').last().click();};
+try{
+ const old=createDemo();old.drafts.c1=structuredClone(old.configs[0]);old.drafts.c1.price=6123;old.logs.push({id:'previous',at:new Date().toISOString(),message:'升级前保留的记录'});
+ await page.goto('http://127.0.0.1:4196');await page.evaluate(s=>localStorage.setItem('diy-web-lite-prototype-v1',JSON.stringify(s)),old);await page.reload();let s=await read();assert.equal(s.drafts.c1.price,6123);assert.equal(s.logs[0].id,'previous');assert.deepEqual(s.configs,old.configs);assert.ok(s.sources.length);check('旧浏览器数据升级保留配置、草稿和操作记录');
+ await openCosts();assert.ok((await page.locator('#cost-rows').innerText()).includes('升级 2TB'));await openSource();await page.locator('#source-upgrade').fill('可升级大容量固态，也可组合加装风扇');await opt(0).locator('[data-addon-field="price"]').fill('499.99');
+ await opt(0).locator('[data-action="addon-add-item"]').click();await opt(0).locator('[data-item-index="1"] [data-addon-item="goodsId"]').selectOption('990018');await opt(0).locator('[data-item-index="1"] [data-addon-item="qty"]').fill('3');
+ assert.ok((await opt(0).locator('.addon-check').innerText()).includes('¥24.99'));assert.ok((await opt(0).locator('.addon-check').innerText()).includes('¥43.99'));
+ await page.locator('[data-action="addon-add-option"]').click();await opt(1).locator('[data-addon-field="text"]').fill('加装 3 把 PWM 风扇');await opt(1).locator('[data-addon-field="price"]').fill('150');await opt(1).locator('[data-addon-field="mode"]').selectOption('add');await opt(1).locator('[data-addon-item="goodsId"]').selectOption('990018');await opt(1).locator('[data-addon-item="qty"]').fill('3');assert.ok((await opt(1).locator('.addon-check').innerText()).includes('¥45.00'));
+ await shot('addon-source-editor');await preview();assert.equal(source(await read()).addons[0].priceCents,39900);assert.ok((await page.locator('dialog').innerText()).includes('499.99'));assert.ok((await page.locator('dialog').innerText()).includes('× 3'));await saveSource();s=await read();assert.equal(source(s).addons.length,2);assert.equal(source(s).addons[0].priceCents,49999);assert.equal(source(s,'jonsbo').addons[0].priceCents,39900);check('多方案、组合商品、两位小数、差价计算及预览后保存');
+ await page.locator('#cost-query').fill('');await shot('source-maintenance');await openC2();let row=page.locator('.parts-table tbody tr').nth(4);assert.ok((await row.innerText()).includes('+¥499.99'));assert.ok((await row.innerText()).includes('+¥150.00'));assert.ok((await page.locator('#price-results').innerText()).includes('+¥749.02'));check('配件行显示对应加购，整机基础利润不变');
+ await page.locator('[data-action="addon-part"][data-index="4"]').click();await opt(0).locator('[data-addon-field="text"]').fill('本配置专属固态与风扇组合');await opt(0).locator('[data-addon-field="price"]').fill('599.99');await opt(1).locator('[data-addon-field="enabled"]').uncheck();await page.getByRole('button',{name:'保存本配置加购',exact:true}).click();assert.ok((await row.innerText()).includes('本配置自定义'));assert.ok((await row.innerText()).includes('599.99'));assert.equal(source(await read()).addons[0].priceCents,49999);await page.locator('[data-action="save"]').click();await page.reload();await openC2();assert.ok((await page.locator('.parts-table tbody tr').nth(4).innerText()).includes('专属'));await shot('parts-with-addons');check('单配置加购、隐藏方案、保存与刷新恢复');
+ await openCosts();await openSource();await opt(0).locator('[data-addon-field="price"]').fill('399.99');await preview();assert.ok((await page.locator('dialog').innerText()).includes('自定义配置保留'));await saveSource();await openC2();row=page.locator('.parts-table tbody tr').nth(4);assert.ok((await row.innerText()).includes('599.99'));check('修改输出源不会覆盖配置自定义加购');
+ await page.locator('[data-action="addon-part"][data-index="4"]').click();await page.locator('[data-action="addon-inherit"]').click();await page.getByRole('button',{name:'确认恢复跟随',exact:true}).click();assert.ok((await row.innerText()).includes('+¥399.99'));await page.locator('[data-action="save"]').click();assert.equal((await read()).configs.find(c=>c.id==='c2').actualParts[4].addonOverride,undefined);check('恢复跟随本店输出源');
+ await openCosts();await openSource();await opt(0).locator('[data-addon-field="price"]').fill('399.991');await preview();assert.ok(await opt(0).locator('[data-addon-field="price"]').evaluate(e=>!e.validity.valid));assert.equal(source(await read()).addons[0].priceCents,39999);await opt(0).locator('[data-addon-field="price"]').fill('399.99');await opt(0).locator('[data-action="addon-remove-item"]').first().click();await opt(0).locator('[data-action="addon-remove-item"]').first().click();await preview();assert.ok((await page.locator('#modal-status').innerText()).includes('至少一个'));await page.locator('dialog [data-action="close"]').first().click();check('非法金额、空关联商品拒绝保存');
+ await page.locator('#source-shop').selectOption('jonsbo');assert.ok((await page.locator('#cost-rows').innerText()).includes('+¥399.00'));assert.ok(!(await page.locator('#cost-rows').innerText()).includes('加装 3 把 PWM'));check('跨店加购独立');
+ await page.locator('#source-shop').selectOption('intel');await page.setViewportSize({width:390,height:900});assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await openSource();assert.ok(await page.evaluate(()=>document.querySelector('dialog').scrollWidth<=document.querySelector('dialog').clientWidth));await shot('addons-mobile');await page.locator('dialog [data-action="close"]').first().click();check('手机宽度下输出源页面和加购弹窗无页面横向溢出');
+ assert.deepEqual(errors,[]);await writeFile(new URL('addons-result.json',out),JSON.stringify({ok:true,checks,errors,browser:'Chrome Windows headless',productionDataAccessed:false},null,2));
+}catch(error){await shot('addons-failure');await writeFile(new URL('addons-result.json',out),JSON.stringify({ok:false,checks,error:error.stack,errors},null,2));throw error;}finally{await browser.close();}

@@ -38,6 +38,10 @@ class ChangeHistoryTests(unittest.TestCase):
         return self.s.update_state(incoming, self.cookie)
 
     def fake_cloud(self, request, token):
+        if request['action'] == 'records.commits':
+            before = request['payload'].get('before', len(self.changes)+1)
+            selected = [c for c in reversed(self.changes) if c['seq'] < before][:50]
+            return dict(ok=True, records=[dict(id=c.get('mutationId'), seq=c['seq'], type=c['type'], entityId=c['id'], version=c['version'], at=c.get('updatedAt'), actorId=c.get('updatedBy'), data=c['data']) for c in selected], nextBefore=selected[-1]['seq'] if len(selected)==50 else None)
         if request['action'] == 'sync.bootstrap':
             return dict(ok=True, headSeq=len(self.changes))
         self.assertEqual(request['action'], 'sync.pull')

@@ -1,0 +1,13 @@
+{
+  "name": "diy-workbench-web-lite-prototype",
+  "version": "0.3.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "start": "node server.mjs",
+    "test": "node --test tests/*.test.mjs",
+    "test:cloud": "node --test tests/cloud-sync.test.mjs",
+    "test:cloud:browser": "node tests/cloud-browser.mjs"
+  }
+}

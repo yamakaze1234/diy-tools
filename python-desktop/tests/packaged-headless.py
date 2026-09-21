@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import sqlite3
 import subprocess
+import sys
 import tempfile
 import time
 import requests
@@ -12,6 +13,20 @@ import requests
 ROOT = Path(__file__).resolve().parents[1]
 build = json.loads((ROOT / 'verification/latest-build.json').read_text(encoding='utf-8'))
 app = Path(build['directory'])
+# Validate the shipped rules, not only the source bundle or unauthenticated HTTP
+# routes: an old bundle can start successfully but fail during synchronization.
+sys.path.insert(0, str(ROOT))
+from domain import Domain
+rules = Domain(app / '_internal')
+try:
+    state = rules('initializeActualParts', {'configs': [
+        {'parts': [{'goodsId': '123', 'qty': 2}]},
+        {'parts': [{'goodsId': '456', 'qty': 1}], 'actualParts': []},
+    ]})
+    assert state['configs'][0]['actualParts'] == state['configs'][0]['parts']
+    assert state['configs'][1]['actualParts'] == []
+finally:
+    rules.close()
 stage = Path(tempfile.mkdtemp(prefix='packaged-headless-', dir=ROOT / '.verification'))
 data = stage / 'data'
 data.mkdir()
@@ -54,7 +69,8 @@ try:
                   sha256=hashlib.sha256(Path(build['executable']).read_bytes()).hexdigest(),
                   isolatedData=str(data), noPythonOrNodeOnPath=True, startup=True, loginGate=True,
                   csrfGate=True, localHistorySchema=True, fixturePreserved=True,
-                  uiSourceFilesIdentical=len(checked), cloudLoginPerformed=False, visualReview=False)
+                  uiSourceFilesIdentical=len(checked), packagedSyncRules=True,
+                  cloudLoginPerformed=False, visualReview=False)
     (ROOT / 'verification' / f"packaged-headless-{build['version']}.json").write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8')
     print(json.dumps(report, ensure_ascii=False))
 finally:

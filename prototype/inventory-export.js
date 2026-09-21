@@ -1,3 +1,4 @@
+import {actualParts} from './actual-parts.js';
 import {productGroups} from './core.js';
 
 // Keep IDs as text: names and quantities never establish product identity.
@@ -10,7 +11,7 @@ export function inventoryPlan(configs, shopId, productIds) {
   const groups = inventoryLinks(configs, shopId).filter(g => picked.has(g.id));
   const byId = new Map(), skipped = [];
   let occurrences = 0;
-  for (const group of groups) for (const config of group.configs) for (const part of config.parts || []) {
+  for (const group of groups) for (const config of group.configs) for (const part of actualParts(config)) {
     const name = String(part.name ?? '').trim(), raw = part.goodsId;
     const goodsId = String(raw ?? '').trim();
     if (!name && !goodsId) continue;

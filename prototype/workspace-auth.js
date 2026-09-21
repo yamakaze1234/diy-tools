@@ -9,7 +9,7 @@ export function workspaceAuth(){
   if(!response.ok||!config.config)throw Error('未配置云端登录，请联系管理员');
   const auth=cloudbase.init({...config.config,env:config.config.envId,persistence:'local',auth:{detectSessionInUrl:false}}).auth;
   const api=async(action,data)=>{
-   const response=await fetch('/api/workspace-sync/'+action,{method:data===undefined?'GET':'POST',headers:{'Content-Type':'application/json','X-DIY-Sync':config.csrf},...(data===undefined?{}:{body:JSON.stringify(data)})});
+   const response=await fetch('/api/workspace-sync/'+action,{signal:AbortSignal.timeout(45000),method:data===undefined?'GET':'POST',headers:{'Content-Type':'application/json','X-DIY-Sync':config.csrf},...(data===undefined?{}:{body:JSON.stringify(data)})});
    const result=await response.json();if(!response.ok)throw Object.assign(Error(result.error||'登录操作失败'),{status:response.status});return result;
   };
   let sessionQueue=Promise.resolve();
@@ -28,7 +28,16 @@ export function workspaceAuth(){
     if(!leaving&&!signingIn)window.dispatchEvent(new CustomEvent('workspace-auth-error',{detail:error.message}));
    });
   });
-  return {auth,api,establishSession};
+  let renewal=null;
+  const renewSession=()=>renewal??=(async()=>{
+   if(leaving||signingIn||!currentUid||!retention.valid())return;
+   let {data,error}=await auth.getSession();if(error)throw error;
+   if(data?.session?.expires_at&&data.session.expires_at*1000<Date.now()+120000){const renewed=await auth.refreshSession();data=renewed.data;error=renewed.error;if(error)throw error;}
+   if(!data?.session||data.session.user?.is_anonymous)throw Error('登录已失效，请重新登录');
+   return establishSession({accessToken:data.session.access_token,resumeUid:currentUid});
+  })().finally(()=>{renewal=null;});
+  setInterval(()=>{renewSession().catch(()=>{});},60000);
+  return {auth,api,establishSession,renewSession};
  })();
 }
 

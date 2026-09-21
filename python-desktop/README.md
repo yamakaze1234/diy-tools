@@ -6,10 +6,17 @@
 
 ## 开发
 
-1. `py -3 -m venv python-desktop/.venv`
-2. `python-desktop/.venv/Scripts/python.exe -m pip install -r python-desktop/requirements.txt`
-3. `node python-desktop/build-web.mjs`
-4. `python-desktop/.venv/Scripts/python.exe -X utf8 python-desktop/main.py`
+以下命令在项目根目录（`配置工具`）执行。安装 uv 后同步环境；Python 固定为 3.13.6，支持 Windows x64。
+
+```powershell
+uv sync --project python-desktop --locked
+node python-desktop/build-web.mjs
+uv run --project python-desktop --locked python -X utf8 python-desktop/main.py
+```
+
+前端构建需要 Node 和 `prototype` 的 npm 依赖；首次安装执行 `npm ci --prefix prototype`，从 `.env.example` 创建缺失的 `.env.local` 并配置，然后执行 `npm run build:sync --prefix prototype` 生成 vendor 资源。Python 依赖以 `pyproject.toml` 和 `uv.lock` 为准，`.python-version` 固定解释器版本。旧 `requirements.txt` 已退出当前源码；需要 pip 兼容清单时从 uv 锁文件导出，见迁移说明。
+
+uv 管理开发环境；已打包 EXE 的启动方式和便携数据路径不变。迁移备份、回退和依赖维护见 [uv迁移说明.md](uv迁移说明.md)。
 
 默认保存到 **EXE 所在文件夹的 `data`**，登录缓存与运行信息保存在 `data/runtime`，不再默认写入 AppData。源码运行时为 `python-desktop/data`。当该工具文件夹尚无 data 时，自动从旧 `%APPDATA%\DIYWorkbench\data` 复制迁入，旧目录保留；已有 data 时绝不覆盖或混入旧数据。首次迁移自动备份 state.json、workspace.sqlite、versions.sqlite；旧版未同步草稿、不可变提交队列和历史版本沿用。旧版必须先正常退出。UI 登录存储使用独立 WebView2 配置目录，因此首次需要重新登录；SQL 凭据可兼容旧版 Windows 加密格式。
 
@@ -29,12 +36,27 @@ ERP 成本及可销数仍只在本机保存，SQL 读取后预览确认。人工
 
 ## 构建与验证
 
-`python-desktop/.venv/Scripts/python.exe -X utf8 -m unittest discover -s python-desktop/tests -v`
+`uv run --project python-desktop --locked python -X utf8 -m unittest discover -s python-desktop/tests -v`
 
-`python-desktop/.venv/Scripts/python.exe -X utf8 python-desktop/build.py`
+`uv run --project python-desktop --locked python -X utf8 python-desktop/build.py`
 
-`python-desktop/.venv/Scripts/python.exe -X utf8 python-desktop/package.py`
+`uv run --project python-desktop --locked python -X utf8 python-desktop/package.py`
 
 构建位置记录在 `verification/latest-build.json`。分发脚本仅收录 EXE、`_internal`、使用说明和 WebView2 安装程序，自动排除程序旁的 `data`，即使本机已使用过该程序也不会把业务数据打入分发包。
 
-版本：0.3.5。Windows 10/11 x64；使用 Windows Edge WebView2 运行时。分发包不包含当前业务数据、登录令牌或 SQL 账号密码。
+版本：0.3.25。Windows 10/11 x64；使用 Windows Edge WebView2 运行时。分发包不包含当前业务数据、登录令牌或 SQL 账号密码。
+
+
+0.3.8 修复说明见 `verification/bugfix-0.3.8-summary.md`。
+
+0.3.10 增加直接拖动文字、模块与四角缩放、画布缩放和平移。自由布局按版式保存，编辑预览与 PNG/ZIP 共用同一绘制流程。
+
+0.3.14 新增共同加购价、跨商品草稿与整批保存；多个独立加购方案可勾选同时展示，支持复制到勾选店铺。已有配置仍通过输出源差异预览应用。展示标志随现有 source 记录同步，无新增 SQL 迁移；旧客户端不理解多选展示语义，协作编辑应统一升级。验收见 `verification/source-batch/result.json`。
+
+0.3.15 将共同信息改为多商品选择列表：每项单独报价与成本检查，展示文案合并为一条。新增 addonChoices/choices 字段随现有 source/configuration 记录存储，旧数据保持兼容且不自动转换；使用新字段的协作成员应统一升级。200 项 Node、40 项 Python 测试及浏览器隔离保存/图片导出验证通过。
+
+0.3.23 修复原图上传确认与重试：先用 SHA256 校验云端已有原图，超时后立即回查，未确认时不推进业务记录同步。新增 10 项模拟网络回归检查，56 项 Python 测试通过。
+
+0.3.24：按选择商品、编辑配置、预览导出整理界面；工具与资料、平台编号、批量维护、成本明细和排版工具按需展开。每店独立设置默认服务承诺。
+
+0.3.25：统一商品标准 JSON；保存每条链接的店铺、SPU、SKU、ERP 商品 ID 与配件 `goods_id` / `n`；增加 ERP 商品刷新查询预览、标准 JSON 导入导出、配件 ERP 库存显示，并记录三店 ERP 店铺对应关系。

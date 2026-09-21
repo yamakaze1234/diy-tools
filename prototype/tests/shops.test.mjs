@@ -17,7 +17,7 @@ test('旧单店数据迁移为三店输出源，现有配置与优惠券归入�
  assert.equal(state.configs[0].shopId,'intel');
  assert.equal(state.configs[0].shop,'英特尔官方旗舰店');
  assert.deepEqual(state.shopSettings,{intel:{coupon:400},gigabyte:{coupon:0},jonsbo:{coupon:0}});
- for(const id of ['intel','gigabyte','jonsbo'])assert.equal(sourcesFor(state,id).length,1);
+ for(const id of ['intel','gigabyte','jonsbo'])assert.equal(sourcesFor(state,id).filter(r=>!r.specialComponent).length,1);
  assert.equal(sourcesFor(state,'gigabyte')[0].sourceId,'gigabyte:catalog-0');
  assert.equal(sourcesFor(state,'jonsbo')[0].sourceId,'jonsbo:catalog-0');
 });
@@ -44,21 +44,21 @@ test('三店显示名称与加购隔离，核算价按 goodsId 同步共享',()=
  assert.equal(intel.parts[0].name,'英特尔展示名');
 });
 
-test('技嘉默认浅色黑橙，乔思伯默认石墨青铜，跨店身份重置品牌与默认外观',()=>{
+test('技嘉默认浅色黑橙，乔思伯默认浅色，跨店身份重置品牌与默认外观',()=>{
  const gigabyte=applyShopIdentity({...structuredClone(legacyConfig),modules:[]},'gigabyte',{resetAppearance:true});
  const jonsbo=applyShopIdentity({...structuredClone(legacyConfig),modules:[]},'jonsbo',{resetAppearance:true});
  assert.equal(gigabyte.theme,'light');assert.equal(gigabyte.brandText,'GIGABYTE');
  assert.deepEqual(gigabyte.palette,shopPalette('gigabyte','light'));
- assert.equal(gigabyte.palette.bg,'#ffffff');assert.equal(gigabyte.palette.accent,'#f36c21');
- assert.equal(jonsbo.theme,'dark');assert.equal(jonsbo.brandText,'JONSBO');
- assert.deepEqual(jonsbo.palette,shopPalette('jonsbo','dark'));
- assert.equal(jonsbo.palette.bg,'#101c24');assert.equal(jonsbo.palette.text,'#edf5f7');
+ assert.equal(gigabyte.palette.bg,'#fdfbf8');assert.equal(gigabyte.palette.accent,'#d64825');
+ assert.equal(jonsbo.theme,'light');assert.equal(jonsbo.brandText,'JONSBO');
+ assert.deepEqual(jonsbo.palette,shopPalette('jonsbo','light'));
+ assert.equal(jonsbo.palette.bg,'#f2f5f9');assert.equal(jonsbo.palette.text,'#253b50');
 });
 
 test('技嘉和乔思伯均保留浅深两套主题，来回切换恢复对应配色',()=>{
  const gigabyte=applyShopIdentity({...structuredClone(legacyConfig),modules:[]},'gigabyte',{resetAppearance:true});
  switchShopTheme(gigabyte,'dark');assert.equal(gigabyte.palette.bg,'#101010');assert.equal(gigabyte.palette.accent,'#ff7900');
- switchShopTheme(gigabyte,'light');assert.equal(gigabyte.palette.bg,'#ffffff');assert.equal(gigabyte.palette.accent,'#f36c21');
+ switchShopTheme(gigabyte,'light');assert.equal(gigabyte.palette.bg,'#fdfbf8');assert.equal(gigabyte.palette.accent,'#d64825');
  const jonsbo=applyShopIdentity({...structuredClone(legacyConfig),modules:[]},'jonsbo',{resetAppearance:true});
  switchShopTheme(jonsbo,'light');assert.equal(jonsbo.palette.bg,'#f2f5f9');assert.equal(jonsbo.palette.text,'#253b50');
  switchShopTheme(jonsbo,'dark');assert.equal(jonsbo.palette.bg,'#101c24');assert.equal(jonsbo.palette.text,'#edf5f7');
@@ -82,4 +82,19 @@ test('乔思伯旧默认主题更新保留业务数据、文字格式和手工�
  switchShopTheme(next.configs[0],'light');
  assert.equal(next.configs[0].upgradeColor,'#a64116');
  assert.equal(next.configs[0].modules[0].background,'#3b5870');
+});
+
+
+test('三店两套主题的新配置与补入服务条使用确认后的同一配色',async()=>{
+ const {modulesDefault,posterModules,blankConfig}=await import('../core.js');
+ const {shopServiceColor,shopServiceTextColor}=await import('../poster-theme.js');
+ for(const shopId of ['intel','gigabyte','jonsbo'])for(const theme of ['light','dark']){
+  const direct=modulesDefault(shopId,theme).find(m=>m.type==='service');
+  const inserted=posterModules({shopId,theme,modules:[]}).find(m=>m.type==='service');
+  for(const m of [direct,inserted]){assert.equal(m.background,shopServiceColor(shopId,theme));assert.equal(m.color,shopServiceTextColor(shopId,theme));assert.match(m.text,/保价双11/);}
+ }
+ const blank=blankConfig(null,{id:'test',name:'测试',shopId:'gigabyte'});
+ assert.equal(blank.modules.find(m=>m.type==='service').background,'#3a3c40');
+ const custom={id:'service',type:'service',text:'自定义承诺',background:'#123456',color:'#abcdef'};
+ assert.deepEqual(posterModules({shopId:'gigabyte',theme:'dark',modules:[custom]}),[custom]);
 });

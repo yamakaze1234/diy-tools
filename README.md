@@ -1,10 +1,10 @@
 # DIY 配置工作台（diy-tools）
 
-用于 DIY 整机配置维护、配件成本管理、配置图编辑与导出、ERP 库存读取和多人云同步的 Windows 桌面工具。当前 Python 桌面版为 **0.3.5**；仓库同时保留 Node/Electron 原型和共享业务规则。
+用于 DIY 整机配置维护、配件成本管理、配置图编辑与导出、ERP 库存读取和多人云同步的 Windows 桌面工具。当前源码为 Python 桌面版 **0.3.25**；仓库保留共用前端、Node 开发服务和轻量网页版。Electron 桌面构建入口已退役。
 
 ## 下载 Windows 程序
 
-[下载最新 Release](https://github.com/yamakaze1234/diy-tools/releases/latest) · [v0.3.5 发布页](https://github.com/yamakaze1234/diy-tools/releases/tag/v0.3.5)
+[下载最新 Release](https://github.com/yamakaze1234/diy-tools/releases/latest)。发布版本以 Release 页面为准，可能与当前源码版本不同。
 
 下载 Release 中的 Windows ZIP，完整解压后运行 EXE，无需安装 Python/Node。公开包使用云配置占位模板，需按[部署说明](docs/部署与开发.md)配置自己的云环境和成员账号；包内不含现有团队数据。
 
@@ -37,47 +37,47 @@
 | 路径 | 内容 |
 | --- | --- |
 | `python-desktop/` | Python + pywebview 桌面端、构建脚本和合成数据测试 |
-| `prototype/` | HTML/CSS/JavaScript 界面、共享业务模块、Node/Electron 原型 |
+| `prototype/` | HTML/CSS/JavaScript 界面、共享业务模块、Node 开发服务 |
 | `shared/` | 同步协议和迁移逻辑 |
+| `web-lite/` | 轻量网页版源码、构建脚本与测试 |
 | `cloud/functions/workbenchApi/` | CloudBase 云函数 |
 | `cloudbase/migrations/` | PostgreSQL 迁移 SQL |
 
 ## 开发启动
 
-Windows 10/11 x64、PowerShell 7、Node.js 24 和支持依赖包的 Python 环境。桌面窗口需要 Microsoft Edge WebView2。
+Windows 10/11 x64、PowerShell 7、Node.js 24、uv 和 Python 3.13.6。桌面窗口需要 Microsoft Edge WebView2。
 
 在仓库根目录执行：
 
 ```powershell
 npm ci --prefix prototype
-Copy-Item prototype/.env.example prototype/.env.local
+if (!(Test-Path prototype/.env.local)) { Copy-Item prototype/.env.example prototype/.env.local }
 # 编辑 prototype/.env.local，填写自己的 CloudBase 客户端配置。
 npm run build:sync --prefix prototype
-py -3 -m venv python-desktop/.venv
-python-desktop/.venv/Scripts/python.exe -m pip install -r python-desktop/requirements.txt
+uv sync --project python-desktop --locked
 node python-desktop/build-web.mjs
-python-desktop/.venv/Scripts/python.exe -X utf8 python-desktop/main.py
+uv run --project python-desktop --locked python -X utf8 python-desktop/main.py
 ```
 
 程序需要登录成员账号。示例配置只能用于构建，不提供可用账号或云服务。使用自己的 CloudBase PostgreSQL 环境，按文件名顺序审阅并执行迁移，部署 `workbenchApi` 并设置云函数环境变量 `WORKBENCH_ENV_ID`；还需要配置认证和工作区成员。仓库不提供自动开通云服务的脚本。
 
-如需运行浏览器原型，完成前两项 Node 构建和云配置后执行 `npm start --prefix prototype`。
+如需运行浏览器原型，完成 Node 构建和云配置后，按[仓库说明](仓库说明.md)从示例初始化缺失的 seed/catalog 文件，再执行 `npm start --prefix prototype`。
 
 ## 测试与打包
 
 ```powershell
 npm test --prefix prototype
-python-desktop/.venv/Scripts/python.exe -X utf8 -m unittest discover -s python-desktop/tests -v
-python-desktop/.venv/Scripts/python.exe -X utf8 python-desktop/build.py
+uv run --project python-desktop --locked python -X utf8 -m unittest discover -s python-desktop/tests -v
+uv run --project python-desktop --locked python -X utf8 python-desktop/build.py
 ```
 
-先完成上述依赖安装和 Web 构建，再运行 Python 测试。默认 Node 测试排除 `core.test.mjs`、`erp-sync.test.mjs` 两套依赖私有历史业务样本的测试；文件保留供维护者参考。浏览器、打包程序和在线验收脚本需要额外环境，未纳入默认测试。
+先完成上述依赖安装和 Web 构建，再运行 Python 测试。默认 Node 测试包含全部 `tests/*.test.mjs`；配置、ERP 和实际配件测试使用仓库内的合成夹具，无需本机业务数据。浏览器、打包程序和在线验收脚本需要额外环境，未纳入默认测试。
 
 构建结果位于 `release/`。`package.py` 还需要在构建目录中放置官方 `MicrosoftEdgeWebview2Setup.exe` 引导安装程序。Git 源码不包含二进制；打包程序和引导安装程序通过 Release ZIP 提供。详细桌面行为见 [Python 桌面说明](python-desktop/README.md)。
 
 ## 数据与配置
 
-公开仓库的 `seed.json` 和 `catalog.json` 为空白数据；测试夹具使用合成数据。实际配置、成本、库存、客户或成员数据、本地登录缓存、SQL 凭据、生产云配置、验收截图和发布包均不上传。
+仓库提供 `prototype/seed.example.json` 和 `catalog.example.json` 空白模板；实际 `seed.json`、`catalog.json` 仅保留本地，不进入 Git。测试夹具使用合成数据。实际配置、成本、库存、客户或成员数据、本地登录缓存、SQL 凭据、生产云配置、验收截图和发布包均不上传。
 
 源码运行的数据目录为 `python-desktop/data`；打包后为 EXE 同级的 `data`。首次启动有旧版本数据迁移逻辑；开发隔离时可设置 `DIY_WORKBENCH_DATA_DIR` 为专用目录。请勿将实际数据加入 Git。
 

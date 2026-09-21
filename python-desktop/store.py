@@ -1,6 +1,7 @@
 """SQLite outbox, three-way merge and version history, compatible with 0.2.21."""
 import json
 import sqlite3
+from datetime import datetime, timedelta, timezone
 from contextlib import contextmanager
 from common import dumps, digest, now, uid, AppError
 
@@ -264,9 +265,10 @@ class History:
         self.domain = domain
         self.db = sqlite3.connect(path, check_same_thread=False, isolation_level=None)
         self.db.row_factory = sqlite3.Row
-        self.db.executescript('PRAGMA journal_mode=WAL; CREATE TABLE IF NOT EXISTS versions(id TEXT PRIMARY KEY,scope TEXT NOT NULL,at TEXT NOT NULL,revision INTEGER NOT NULL,reason TEXT NOT NULL,hash TEXT NOT NULL,content TEXT NOT NULL);')
+        self.db.executescript('CREATE TABLE IF NOT EXISTS history_maintenance(key TEXT PRIMARY KEY,value TEXT NOT NULL); PRAGMA journal_mode=WAL; CREATE TABLE IF NOT EXISTS versions(id TEXT PRIMARY KEY,scope TEXT NOT NULL,at TEXT NOT NULL,revision INTEGER NOT NULL,reason TEXT NOT NULL,hash TEXT NOT NULL,content TEXT NOT NULL);')
 
     def record(self, state, scope, reason):
+        self.prune()
         content = dumps(state)
         hashed = digest(content)
         last = self.db.execute('SELECT hash FROM versions WHERE scope=? ORDER BY rowid DESC LIMIT 1', (scope,)).fetchone()
@@ -275,13 +277,29 @@ class History:
         self.db.execute('BEGIN IMMEDIATE')
         try:
             self.db.execute('INSERT INTO versions VALUES(?,?,?,?,?,?,?)', (uid(), scope, now(), state.get('revision', 0), reason, hashed, content))
-            self.db.execute('DELETE FROM versions WHERE scope=? AND id NOT IN (SELECT id FROM versions WHERE scope=? ORDER BY rowid DESC LIMIT 100)', (scope, scope))
             self.db.execute('COMMIT')
         except BaseException:
             self.db.execute('ROLLBACK')
             raise
 
+    def prune(self, at=None):
+        current = at or datetime.now(timezone.utc)
+        last = self.db.execute("SELECT value FROM history_maintenance WHERE key='last_cleanup'").fetchone()
+        if last and current - datetime.fromisoformat(last[0]) < timedelta(days=7):
+            return 0
+        cutoff = (current - timedelta(days=30)).isoformat()
+        self.db.execute('BEGIN IMMEDIATE')
+        try:
+            removed = self.db.execute("DELETE FROM versions WHERE julianday(at)<julianday(?) AND rowid NOT IN (SELECT max(rowid) FROM versions GROUP BY scope)", (cutoff,)).rowcount
+            self.db.execute("INSERT OR REPLACE INTO history_maintenance VALUES('last_cleanup',?)", (current.isoformat(),))
+            self.db.execute('COMMIT')
+            return removed
+        except BaseException:
+            self.db.execute('ROLLBACK')
+            raise
+
     def list(self, scope):
+        self.prune()
         return [dict(r) for r in self.db.execute('SELECT id,at,revision,reason FROM versions WHERE scope=? ORDER BY rowid DESC LIMIT 100', (scope,))]
 
     def get(self, key, scope):

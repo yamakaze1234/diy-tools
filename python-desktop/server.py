@@ -66,6 +66,17 @@ def create_server(service, port=0):
                     raise AppError('来源不匹配', 403)
                 if path.startswith('/api/workspace-sync/'):
                     return self.workspace(path.rsplit('/', 1)[1], cookie)
+                if path == '/api/recovery-draft' and self.command == 'POST':
+                    if not service.cloud.cookie or f'diy_session={service.cloud.cookie}' not in [v.strip() for v in cookie.split(';')]:
+                        raise AppError('本机会话无效', 401)
+                    data = self.body()
+                    if not isinstance(data.get('state'), dict):
+                        raise AppError('恢复草稿格式无效')
+                    from common import uid
+                    target = service.local / 'recovery' / ('draft-' + uid() + '.json')
+                    target.parent.mkdir(exist_ok=True)
+                    atomic(target, dumps(data['state']))
+                    return self.send(200, dict(ok=True, file=str(target)))
                 with service.lock:
                     if collector:
                         if not service.cloud.token:
@@ -82,6 +93,10 @@ def create_server(service, port=0):
                     return self.send(200, state)
                 if path == '/api/session':
                     return self.send(200, service.session)
+                if path == '/api/products/standard' and self.command == 'GET':
+                    with service.lock:
+                        result = dict(revision=service.state['revision'], links=service.domain('standardProducts', service.state))
+                    return self.send(200, result)
                 if path == '/api/versions' and self.command == 'GET':
                     with service.lock:
                         result = dict(versions=service.history.list(service.scope()))
@@ -93,6 +108,16 @@ def create_server(service, port=0):
                     return self.send(200, result)
                 if path == '/api/versions/restore' and self.command == 'POST':
                     return self.send(200, service.restore(self.body(), cookie))
+                if path in ('/api/product-sync/status', '/api/product-sync/start', '/api/product-sync/cancel'):
+                    action = path.rsplit('/', 1)[1]
+                    if self.command != ('GET' if action == 'status' else 'POST'):
+                        raise AppError('不支持此操作', 405)
+                    data = self.body() if self.command == 'POST' else {}
+                    with service.lock:
+                        jobs = service.product_jobs
+                        jobs.session(service.cloud.cookie)
+                        result = jobs.start(data) if action == 'start' else jobs.cancel() if action == 'cancel' else jobs.status()
+                    return self.send(200, result)
                 if path in ('/api/erp-sync/status', '/api/erp-sync/start'):
                     data = self.body() if self.command == 'POST' else {}
                     with service.lock:

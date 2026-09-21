@@ -11,13 +11,14 @@ from service import Service
 from server import start_server
 from storage_paths import storage_paths, prepare_storage
 
-VERSION = '0.3.5'
+VERSION = '0.3.25'
 
 
 def run():
     parser = argparse.ArgumentParser()
     parser.add_argument('--headless', action='store_true', help='Run local backend only for verification')
     parser.add_argument('--port', type=int, default=None)
+    parser.add_argument('--source-preview', action='store_true', help='Label the source review window and start with automatic cloud sync paused')
     args = parser.parse_args()
     root = Path(getattr(sys, '_MEIPASS', Path(__file__).parent)).resolve()
     paths = storage_paths()
@@ -43,6 +44,8 @@ def run():
         except (requests.RequestException, ValueError):
             pass
     service = Service(root, local)
+    if args.source_preview:
+        service.cloud.paused = True
     try:
         server = start_server(service, port)
     except OSError:
@@ -56,13 +59,16 @@ def run():
             threading.Event().wait()
             return
         import webview
+        from download_notify import install_download_notifications
+        install_download_notifications()
         webview.settings['ALLOW_DOWNLOADS'] = True
         webview.settings['ALLOW_FILE_URLS'] = False
         webview.settings['OPEN_EXTERNAL_LINKS_IN_BROWSER'] = True
         webview.settings['OPEN_DEVTOOLS_IN_DEBUG'] = False
         if os.environ.get('DIY_WORKBENCH_DEBUG_PORT'):
             webview.settings['REMOTE_DEBUGGING_PORT'] = int(os.environ['DIY_WORKBENCH_DEBUG_PORT'])
-        window = webview.create_window('DIY 配置工作台', url, width=1600, height=1000, min_size=(1100, 720))
+        title = 'DIY 配置工作台 · 源码预览' if args.source_preview else 'DIY 配置工作台'
+        window = webview.create_window(title, url, width=1600, height=1000, min_size=(1100, 720))
         closing = {'busy': False, 'allow': False}
 
         class WindowAPI:
@@ -81,6 +87,16 @@ def run():
             if closing['busy']:
                 return False
             closing['busy'] = True
+            def close_timeout():
+                if not closing['busy'] or closing['allow']:
+                    return
+                closing['busy'] = False
+                if ctypes.windll.user32.MessageBoxW(None, '页面长时间未响应。已保存的数据会保留，尚未保存的输入可能丢失。是否仍然退出？', '工作台未响应', 0x24) == 6:
+                    closing['allow'] = True
+                    window.destroy()
+            watchdog = threading.Timer(55, close_timeout)
+            watchdog.daemon = True
+            watchdog.start()
 
             def save_before_close():
                 try:

@@ -22,3 +22,27 @@ python-desktop/domain-bundle.js
 prototype/vendor/
 cloud/config.json
 python-desktop/verification/
+
+# Local workspace and preserved publication checkout
+/github-public/
+/.imports/
+/设计例图/
+verification/
+source-preview-*/
+.data-migration-*/
+*.db
+*.db-*
+*.sqlite*-wal
+*.sqlite*-shm
+*.exe
+*.zip
+*.7z
+*.bak
+*.tmp
+# Live business data must stay local
+/prototype/seed.json
+/prototype/catalog.json
+/prototype/复制同步测试密码.ps1
+/现有工具输出契约核验.json
+/在线表格样例核验.json
+/真实素材登记.json

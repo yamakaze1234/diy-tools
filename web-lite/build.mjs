@@ -1,0 +1,22 @@
+import {createRequire} from 'node:module';
+import {fileURLToPath} from 'node:url';
+import {readFile,writeFile,mkdir} from 'node:fs/promises';
+const require=createRequire(new URL('../prototype/package.json',import.meta.url));
+const {build}=require('esbuild');
+const result=await build({entryPoints:[fileURLToPath(new URL('./app.mjs',import.meta.url))],bundle:true,write:false,format:'iife',target:['chrome110','safari16'],minify:false,legalComments:'none'});
+const css=await readFile(new URL('./style.css',import.meta.url),'utf8');
+const template=await readFile(new URL('./index.html',import.meta.url),'utf8');
+const html=template.replace('<!--STYLE-->',()=>`<style>${css}</style>`).replace('<!--SCRIPT-->',()=>`<script>${result.outputFiles[0].text.replace(/<\/script/gi,'<\\/script')}</script>`);
+await mkdir(new URL('./dist/',import.meta.url),{recursive:true});
+await writeFile(new URL('./dist/index.html',import.meta.url),html);
+console.log(`Built standalone dist/index.html (${Math.round(Buffer.byteLength(html)/1024)} KB). No external requests or production data.`);
+let publicConfig=null;
+try{const raw=await readFile(new URL('./.env.local',import.meta.url),'utf8');const config=JSON.parse(raw.split(/\r?\n/).find(l=>l.startsWith('CLOUDBASE_PUBLIC_CONFIG=')).slice('CLOUDBASE_PUBLIC_CONFIG='.length));
+ if(!/^[a-z0-9-]+$/.test(config.envId)||config.functionName!=='workbenchApi'||!config.accessKey)throw Error('云端公开配置无效');
+ publicConfig=Object.fromEntries(['envId','region','functionName','accessKey'].map(k=>[k,config[k]]));
+}catch(error){if(error.code!=='ENOENT')throw error;}
+const cloud=await build({entryPoints:[fileURLToPath(new URL('./cloud-entry.mjs',import.meta.url))],bundle:true,write:false,format:'iife',target:['chrome110','safari16'],minify:true,legalComments:'none',define:{__WEB_LITE_CLOUD_CONFIG__:JSON.stringify(publicConfig)}});
+const cloudHtml=template.replace('<!--STYLE-->',()=>`<style>${css}</style>`).replace('<!--SCRIPT-->',()=>`<script>${cloud.outputFiles[0].text.replace(/<\/script/gi,'<\\/script')}</script>`);
+await writeFile(new URL('./dist/cloud.html',import.meta.url),cloudHtml);
+await writeFile(new URL('./dist/cloud-public.json',import.meta.url),JSON.stringify(publicConfig?{envId:publicConfig.envId,region:publicConfig.region}:null));
+console.log(`Built dist/cloud.html (${Math.round(Buffer.byteLength(cloudHtml)/1024)} KB). Member login required; no session or business data bundled.`);

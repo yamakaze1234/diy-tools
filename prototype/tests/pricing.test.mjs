@@ -10,8 +10,8 @@ test('定价加店铺券，分期仅按到手价扣费，不改变原成本',()=
  assert.equal(pricing({...c,installment:24},{coupon:200}).fee,799.9);
  assert.equal(pricing({...c,installment:0}).fee,0);assert.equal(c.parts[0].erp,6520);
 });
-test('定价复制保持输入顺序、两位小数和零价，无表头与货币符号',()=>{
- assert.equal(pricingColumn([{price:0},{price:10.1},{price:1.23}],{coupon:.2}),'0.20\r\n10.30\r\n1.43');
+test('定价复制保持输入顺序、四舍五入整数和零价，无表头与货币符号',()=>{
+ assert.equal(pricingColumn([{price:0},{price:10.1},{price:1.23}],{coupon:.2}),'0\r\n10\r\n1');
  assert.throws(()=>pricing({price:-1}));assert.throws(()=>pricing({price:2},{coupon:NaN}));assert.throws(()=>pricing({price:2,installment:3}));
 });
 test('删除列表按服务启动筛选，刷新保留，重启不显示历史且不删除数据',()=>{

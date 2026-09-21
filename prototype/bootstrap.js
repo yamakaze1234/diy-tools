@@ -1,3 +1,5 @@
+import {observeEmptyErrors} from './ui-feedback.js';
+observeEmptyErrors(document.body);
 import {requireWorkspaceLogin} from './workspace-auth.js';
 // Waiting for user input must not keep Electron's initial loadURL pending.
 async function start(){

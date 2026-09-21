@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "ok": true,
+  "command": "deliver",
+  "type": "architecture",
+  "input": "D:\\工作\\PythonProject\\配置工具\\docs\\architecture\\workbench-sync.architecture.json",
+  "output": "D:\\工作\\PythonProject\\配置工具\\docs\\architecture\\工作台同步架构.html",
+  "specification": {
+    "sha256": "6af55cfcd9106ad40c4fa6e1fd721f9016bf4e0f6159347d91ba682f0ea43f22",
+    "bytes": 7924
+  },
+  "artifact": {
+    "sha256": "a301d11e1afa10ca187e1161b8175f724218d44f4f5742c26b9cf8eb5010acd0",
+    "bytes": 618341
+  },
+  "validation": {
+    "checksPassed": 9,
+    "checkCount": 9,
+    "compositionProfile": "showcase",
+    "compositionStatus": "pass",
+    "errors": 0,
+    "warnings": 0
+  },
+  "visual_review": "skipped (local HTML preview blocked by browser URL policy)",
+  "correction_rounds": 0
+}

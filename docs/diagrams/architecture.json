@@ -3,206 +3,48 @@
   "diagram_type": "architecture",
   "meta": {
     "title": "DIY 配置工作台 · 系统架构",
-    "subtitle": "Python 桌面版 0.3.4 | 普通编辑先保存本机，云端同步独立调度",
+    "subtitle": "Python 桌面版 0.3.25 · 本机优先保存 · ERP 只读 · CloudBase 多人同步",
+    "output": "architecture.html",
     "quality_profile": "showcase",
-    "visual_preset": "classic"
+    "visual_preset": "classic",
+    "animation": "none",
+    "viewBox": [1480, 820],
+    "views": [
+      {"id": "desktop-path", "label": "桌面工作流", "focus": ["desktop-user", "desktop-ui", "python-service", "local-data", "rules-engine", "erp-sql"], "note": "桌面端先写本机数据，ERP 只读结果经过预览确认后应用。"},
+      {"id": "sync-path", "label": "多人同步", "focus": ["desktop-ui", "python-service", "sync-worker", "cloud-api", "cloud-db", "cloud-assets", "member-auth"], "note": "待提交记录经成员认证上传，收到回执后再分页拉取云端变更。"},
+      {"id": "web-path", "label": "轻量网页版", "focus": ["web-lite", "member-auth", "cloud-api", "cloud-db"], "note": "轻量网页版复用协议访问共享数据，ERP 成本与库存保持未知。"}
+    ]
   },
   "components": [
-    {
-      "id": "window",
-      "type": "frontend",
-      "label": "桌面界面",
-      "sublabel": "pywebview / WebView2",
-      "pos": [
-        60,
-        260
-      ],
-      "size": [
-        200,
-        76
-      ]
-    },
-    {
-      "id": "service",
-      "type": "backend",
-      "label": "本机 Python 服务",
-      "sublabel": "HTTP · 会话 · 业务操作",
-      "pos": [
-        340,
-        260
-      ],
-      "size": [
-        200,
-        76
-      ]
-    },
-    {
-      "id": "sync",
-      "type": "backend",
-      "label": "后台同步",
-      "sublabel": "两小时 / 手动触发",
-      "pos": [
-        620,
-        260
-      ],
-      "size": [
-        200,
-        76
-      ]
-    },
-    {
-      "id": "gateway",
-      "type": "cloud",
-      "label": "workbenchApi",
-      "sublabel": "CloudBase 云函数",
-      "pos": [
-        900,
-        260
-      ],
-      "size": [
-        200,
-        76
-      ]
-    },
-    {
-      "id": "database",
-      "type": "database",
-      "label": "云端 PostgreSQL",
-      "sublabel": "成员 · 记录 · 提交日志",
-      "pos": [
-        1180,
-        260
-      ],
-      "size": [
-        200,
-        76
-      ]
-    },
-    {
-      "id": "local",
-      "type": "database",
-      "label": "本机数据",
-      "sublabel": "SQLite / JSON / 图片",
-      "pos": [
-        340,
-        70
-      ],
-      "size": [
-        200,
-        76
-      ]
-    },
-    {
-      "id": "rules",
-      "type": "backend",
-      "label": "共享业务规则",
-      "sublabel": "QuickJS 纯函数",
-      "pos": [
-        340,
-        450
-      ],
-      "size": [
-        200,
-        76
-      ]
-    },
-    {
-      "id": "erp",
-      "type": "external",
-      "label": "ERP SQL Server",
-      "sublabel": "只读查询 · 预览确认",
-      "pos": [
-        60,
-        450
-      ],
-      "size": [
-        200,
-        76
-      ]
-    },
-    {
-      "id": "storage",
-      "type": "cloud",
-      "label": "云端图片存储",
-      "sublabel": "成员鉴权 · 原始素材",
-      "pos": [
-        620,
-        70
-      ],
-      "size": [
-        200,
-        76
-      ]
-    },
-    {
-      "id": "auth",
-      "type": "security",
-      "label": "成员认证",
-      "sublabel": "CloudBase 客户端 SDK",
-      "pos": [
-        60,
-        70
-      ],
-      "size": [
-        200,
-        76
-      ]
-    }
+    {"id": "desktop-user", "type": "external", "label": "Windows 用户", "sublabel": "业务成员", "pos": [40, 302], "size": [150, 68]},
+    {"id": "desktop-ui", "type": "frontend", "label": "桌面工作台", "sublabel": "pywebview / WebView2", "pos": [250, 300], "size": [180, 72]},
+    {"id": "python-service", "type": "backend", "label": "本机 Python 服务", "sublabel": "HTTP API · 会话 · 业务操作", "pos": [500, 300], "size": [190, 72]},
+    {"id": "sync-worker", "type": "messagebus", "label": "同步队列与后台线程", "sublabel": "固定提交 ID · 回执后拉取", "pos": [760, 300], "size": [200, 72]},
+    {"id": "cloud-api", "type": "cloud", "label": "workbenchApi", "sublabel": "CloudBase 云函数 / RPC", "pos": [1030, 300], "size": [180, 72]},
+    {"id": "cloud-db", "type": "database", "label": "CloudBase PostgreSQL", "sublabel": "工作区 · 记录 · 变更日志", "pos": [1280, 300], "size": [180, 72]},
+    {"id": "local-data", "type": "database", "label": "本机数据", "sublabel": "SQLite · JSON · 图片 · 历史", "pos": [500, 90], "size": [190, 72]},
+    {"id": "rules-engine", "type": "backend", "label": "共享业务规则", "sublabel": "前端模块 / QuickJS 纯函数", "pos": [500, 510], "size": [190, 72]},
+    {"id": "erp-sql", "type": "external", "label": "ERP SQL Server", "sublabel": "只读成本与库存查询", "pos": [250, 510], "size": [180, 72]},
+    {"id": "member-auth", "type": "security", "label": "成员认证", "sublabel": "令牌与工作区成员校验", "pos": [1030, 90], "size": [180, 72]},
+    {"id": "cloud-assets", "type": "cloud", "label": "云端原图存储", "sublabel": "校验 · 去重 · 按需下载", "pos": [1280, 510], "size": [180, 72]},
+    {"id": "web-lite", "type": "frontend", "label": "轻量网页版", "sublabel": "IndexedDB · 云同步", "pos": [250, 690], "size": [180, 72]}
   ],
   "connections": [
-    {
-      "from": "window",
-      "to": "service"
-    },
-    {
-      "from": "service",
-      "to": "sync"
-    },
-    {
-      "from": "sync",
-      "to": "gateway"
-    },
-    {
-      "from": "gateway",
-      "to": "database"
-    },
-    {
-      "from": "service",
-      "to": "local"
-    },
-    {
-      "from": "service",
-      "to": "rules"
-    },
-    {
-      "from": "service",
-      "to": "erp"
-    },
-    {
-      "from": "sync",
-      "to": "storage"
-    },
-    {
-      "from": "window",
-      "to": "auth"
-    }
+    {"id": "desktop-open", "from": "desktop-user", "to": "desktop-ui", "variant": "emphasis", "route": "straight"},
+    {"id": "desktop-api", "from": "desktop-ui", "to": "python-service"},
+    {"id": "local-save", "from": "python-service", "to": "local-data", "label": "先保存本机"},
+    {"id": "business-rules", "from": "python-service", "to": "rules-engine"},
+    {"id": "erp-read", "from": "python-service", "to": "erp-sql", "label": "只读查询", "variant": "dashed"},
+    {"id": "queue-sync", "from": "python-service", "to": "sync-worker", "label": "待提交记录"},
+    {"id": "cloud-request", "from": "sync-worker", "to": "cloud-api", "variant": "emphasis"},
+    {"id": "cloud-records", "from": "cloud-api", "to": "cloud-db"},
+    {"id": "auth-check", "from": "member-auth", "to": "cloud-api", "variant": "security"},
+    {"id": "asset-transfer", "from": "cloud-api", "to": "cloud-assets", "variant": "dashed"},
+    {"id": "web-cloud", "from": "web-lite", "to": "cloud-api", "label": "协议 v2"}
   ],
   "cards": [
-    {
-      "dot": "emerald",
-      "title": "本机优先",
-      "items": [
-        "编辑、历史版本与同步队列保存在本机。",
-        "ERP 成本、可销数和 SQL 凭据不参与业务云同步。"
-      ]
-    },
-    {
-      "dot": "cyan",
-      "title": "同步顺序",
-      "items": [
-        "上传提交并确认回执，再分页拉取更新。",
-        "冲突需人工选择；不确定提交保留原 ID。"
-      ]
-    }
+    {"dot": "cyan", "title": "本机优先", "items": ["编辑先写 SQLite / JSON", "打包后数据位于 EXE 同级 data", "ERP 凭据仅本机加密保存"]},
+    {"dot": "emerald", "title": "受控同步", "items": ["成员与工作区双重校验", "固定提交 ID 与服务端回执", "冲突显式选择，不按客户端时间覆盖"]},
+    {"dot": "amber", "title": "数据边界", "items": ["ERP 成本与库存不进业务云同步", "原图按需上传与下载", "轻量网页版不伪造 ERP 数据"]}
   ]
 }

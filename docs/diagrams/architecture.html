@@ -4498,10 +4498,10 @@
         <div class="pulse-dot"></div>
         <h1>DIY 配置工作台 · 系统架构</h1>
       </div>
-      <p class="subtitle">Python 桌面版 0.3.4 | 普通编辑先保存本机，云端同步独立调度</p>
+      <p class="subtitle">Python 桌面版 0.3.25 · 本机优先保存 · ERP 只读 · CloudBase 多人同步</p>
     </div>
 
-    <script id="archify-guided-views-data" type="application/json">[]</script>
+    <script id="archify-guided-views-data" type="application/json">[{"id":"desktop-path","label":"桌面工作流","focus":["desktop-user","desktop-ui","python-service","local-data","rules-engine","erp-sql"],"note":"桌面端先写本机数据，ERP 只读结果经过预览确认后应用。"},{"id":"sync-path","label":"多人同步","focus":["desktop-ui","python-service","sync-worker","cloud-api","cloud-db","cloud-assets","member-auth"],"note":"待提交记录经成员认证上传，收到回执后再分页拉取云端变更。"},{"id":"web-path","label":"轻量网页版","focus":["web-lite","member-auth","cloud-api","cloud-db"],"note":"轻量网页版复用协议访问共享数据，ERP 成本与库存保持未知。"}]</script>
 
     <div class="guided-views no-print" id="guided-views" hidden aria-label="Guided diagram views">
       <button id="guided-view-prev" type="button" aria-label="Previous guided view" title="Previous guided view ([)">&#8592;</button>
@@ -4544,9 +4544,9 @@
 
     <!-- Main Diagram -->
     <div class="diagram-container" data-detail-level="read">
-      <svg viewBox="0 0 1420 594" role="img" aria-labelledby="archify-diagram-title archify-diagram-description" data-preset="classic" data-quality-profile="showcase">
+      <svg viewBox="0 0 1480 820" role="img" aria-labelledby="archify-diagram-title archify-diagram-description" data-preset="classic" data-quality-profile="showcase">
         <title id="archify-diagram-title">DIY 配置工作台 · 系统架构</title>
-        <desc id="archify-diagram-description">Python 桌面版 0.3.4 | 普通编辑先保存本机，云端同步独立调度</desc>
+        <desc id="archify-diagram-description">Python 桌面版 0.3.25 · 本机优先保存 · ERP 只读 · CloudBase 多人同步</desc>
         <!-- Definitions -->
         <defs>
           <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
@@ -4573,171 +4573,220 @@
 
 
         <!-- Connection paths (before components for correct z-order) -->
-        <path data-edge-from="window" data-edge-to="service" data-edge-key="0" data-composition-points="260,298;284,298;284,314;316,314;316,291;340,291" d="M 260 298 L 276 298 Q 284 298 284 306 L 284 306 Q 284 314 292 314 L 308 314 Q 316 314 316 306 L 316 299 Q 316 291 324 291 L 340 291" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="service" data-edge-to="sync" data-edge-key="1" data-composition-points="540,298;620,298" d="M 540 298 L 620 298" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="sync" data-edge-to="gateway" data-edge-key="2" data-composition-points="820,298;900,298" d="M 820 298 L 900 298" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="gateway" data-edge-to="database" data-edge-key="3" data-composition-points="1100,298;1180,298" d="M 1100 298 L 1180 298" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="service" data-edge-to="local" data-edge-key="4" data-composition-points="440,260;440,146" d="M 440 260 L 440 146" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="service" data-edge-to="rules" data-edge-key="5" data-composition-points="440,336;440,450" d="M 440 336 L 440 450" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="service" data-edge-to="erp" data-edge-key="6" data-composition-points="340,305;300,305;300,488;260,488" d="M 340 305 L 308 305 Q 300 305 300 313 L 300 480 Q 300 488 292 488 L 260 488" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="sync" data-edge-to="storage" data-edge-key="7" data-composition-points="720,260;720,146" d="M 720 260 L 720 146" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="window" data-edge-to="auth" data-edge-key="8" data-composition-points="160,260;160,146" d="M 160 260 L 160 146" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="desktop-user" data-edge-to="desktop-ui" data-edge-key="0" data-edge-id="desktop-open" data-composition-points="190,336;250,336" d="M 190 336 L 250 336" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
+        <path data-edge-from="desktop-ui" data-edge-to="python-service" data-edge-key="1" data-edge-id="desktop-api" data-composition-points="430,336;454,336;454,352;476,352;476,329;500,329" d="M 430 336 L 446 336 Q 454 336 454 344 L 454 344 Q 454 352 462 352 L 468 352 Q 476 352 476 344 L 476 337 Q 476 329 484 329 L 500 329" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="python-service" data-edge-to="local-data" data-edge-label="先保存本机" data-edge-key="2" data-edge-id="local-save" data-composition-points="595,300;595,162" d="M 595 300 L 595 162" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="python-service" data-edge-to="rules-engine" data-edge-key="3" data-edge-id="business-rules" data-composition-points="595,372;595,510" d="M 595 372 L 595 510" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="python-service" data-edge-to="erp-sql" data-edge-label="只读查询" data-edge-key="4" data-edge-id="erp-read" data-composition-points="500,343;465,343;465,546;430,546" d="M 500 343 L 473 343 Q 465 343 465 351 L 465 538 Q 465 546 457 546 L 430 546" class="a-dashed" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
+        <path data-edge-from="python-service" data-edge-to="sync-worker" data-edge-label="待提交记录" data-edge-key="5" data-edge-id="queue-sync" data-composition-points="690,336;760,336" d="M 690 336 L 760 336" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="sync-worker" data-edge-to="cloud-api" data-edge-key="6" data-edge-id="cloud-request" data-composition-points="960,336;984,336;984,352;1006,352;1006,329;1030,329" d="M 960 336 L 976 336 Q 984 336 984 344 L 984 344 Q 984 352 992 352 L 998 352 Q 1006 352 1006 344 L 1006 337 Q 1006 329 1014 329 L 1030 329" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
+        <path data-edge-from="cloud-api" data-edge-to="cloud-db" data-edge-key="7" data-edge-id="cloud-records" data-composition-points="1210,329;1234,329;1234,352;1256,352;1256,336;1280,336" d="M 1210 329 L 1226 329 Q 1234 329 1234 337 L 1234 344 Q 1234 352 1242 352 L 1248 352 Q 1256 352 1256 344 L 1256 344 Q 1256 336 1264 336 L 1280 336" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="member-auth" data-edge-to="cloud-api" data-edge-key="8" data-edge-id="auth-check" data-composition-points="1120,162;1120,300" d="M 1120 162 L 1120 300" class="a-security" stroke-width="1.5" marker-end="url(#arrowhead-security)"/>
+        <path data-edge-from="cloud-api" data-edge-to="cloud-assets" data-edge-key="9" data-edge-id="asset-transfer" data-composition-points="1210,343;1245,343;1245,546;1280,546" d="M 1210 343 L 1237 343 Q 1245 343 1245 351 L 1245 538 Q 1245 546 1253 546 L 1280 546" class="a-dashed" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
+        <path data-edge-from="web-lite" data-edge-to="cloud-api" data-edge-label="协议 v2" data-edge-key="10" data-edge-id="web-cloud" data-composition-points="430,726;1006,726;1006,343;1030,343" d="M 430 726 L 998 726 Q 1006 726 1006 718 L 1006 351 Q 1006 343 1014 343 L 1030 343" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
 
         <!-- Components -->
-        <g id="node-window" data-node-id="window" data-node-label="桌面界面" tabindex="0" role="button" aria-label="Focus 桌面界面, pywebview / WebView2, Architecture component" aria-pressed="false" data-node-kind="frontend" data-node-sublabel="pywebview / WebView2" data-node-context="Architecture component">
-          <title>桌面界面 · pywebview / WebView2 · Architecture component</title>
-          <rect x="60" y="260" width="200" height="76" rx="6" class="c-mask"/>
-          <rect x="60" y="260" width="200" height="76" rx="6" class="c-frontend" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="frontend" class="semantic-sigil s-frontend" transform="translate(66 266) scale(0.6875)">
+        <g id="node-desktop-user" data-node-id="desktop-user" data-node-label="Windows 用户" tabindex="0" role="button" aria-label="Focus Windows 用户, 业务成员, Architecture component" aria-pressed="false" data-node-kind="external" data-node-sublabel="业务成员" data-node-context="Architecture component">
+          <title>Windows 用户 · 业务成员 · Architecture component</title>
+          <rect x="40" y="302" width="150" height="68" rx="6" class="c-mask"/>
+          <rect x="40" y="302" width="150" height="68" rx="6" class="c-external" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="external" class="semantic-sigil s-external" transform="translate(46 308) scale(0.6875)">
+            <rect x="2.5" y="5" width="8.5" height="8" rx="1.5"/>
+            <path d="M8 2.5h5.5V8M13.5 2.5 7.5 8.5"/>
+          </g>
+          <text data-detail-anchor x="115" y="334" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Windows 用户</text>
+        <text data-detail="context" x="115" y="350" class="t-muted" font-size="9" text-anchor="middle">业务成员</text>
+        </g>
+
+        <g id="node-desktop-ui" data-node-id="desktop-ui" data-node-label="桌面工作台" tabindex="0" role="button" aria-label="Focus 桌面工作台, pywebview / WebView2, Architecture component" aria-pressed="false" data-node-kind="frontend" data-node-sublabel="pywebview / WebView2" data-node-context="Architecture component">
+          <title>桌面工作台 · pywebview / WebView2 · Architecture component</title>
+          <rect x="250" y="300" width="180" height="72" rx="6" class="c-mask"/>
+          <rect x="250" y="300" width="180" height="72" rx="6" class="c-frontend" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="frontend" class="semantic-sigil s-frontend" transform="translate(256 306) scale(0.6875)">
             <rect x="2" y="3" width="12" height="10" rx="2"/>
             <path d="M2 6.5h12"/>
             <circle cx="4.1" cy="4.8" r=".7" class="sigil-fill"/>
             <circle cx="6.3" cy="4.8" r=".7" class="sigil-fill"/>
           </g>
-          <text data-detail-anchor x="160" y="296" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">桌面界面</text>
-        <text data-detail="context" x="160" y="312" class="t-muted" font-size="9" text-anchor="middle">pywebview / WebView2</text>
+          <text data-detail-anchor x="340" y="334" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">桌面工作台</text>
+        <text data-detail="context" x="340" y="350" class="t-muted" font-size="9" text-anchor="middle">pywebview / WebView2</text>
         </g>
 
-        <g id="node-service" data-node-id="service" data-node-label="本机 Python 服务" tabindex="0" role="button" aria-label="Focus 本机 Python 服务, HTTP · 会话 · 业务操作, Architecture component" aria-pressed="false" data-node-kind="backend" data-node-sublabel="HTTP · 会话 · 业务操作" data-node-context="Architecture component">
-          <title>本机 Python 服务 · HTTP · 会话 · 业务操作 · Architecture component</title>
-          <rect x="340" y="260" width="200" height="76" rx="6" class="c-mask"/>
-          <rect x="340" y="260" width="200" height="76" rx="6" class="c-backend" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(346 266) scale(0.6875)">
+        <g id="node-python-service" data-node-id="python-service" data-node-label="本机 Python 服务" tabindex="0" role="button" aria-label="Focus 本机 Python 服务, HTTP API · 会话 · 业务操作, Architecture component" aria-pressed="false" data-node-kind="backend" data-node-sublabel="HTTP API · 会话 · 业务操作" data-node-context="Architecture component">
+          <title>本机 Python 服务 · HTTP API · 会话 · 业务操作 · Architecture component</title>
+          <rect x="500" y="300" width="190" height="72" rx="6" class="c-mask"/>
+          <rect x="500" y="300" width="190" height="72" rx="6" class="c-backend" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(506 306) scale(0.6875)">
             <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
           </g>
-          <text data-detail-anchor x="440" y="296" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">本机 Python 服务</text>
-        <text data-detail="context" x="440" y="312" class="t-muted" font-size="9" text-anchor="middle">HTTP · 会话 · 业务操作</text>
+          <text data-detail-anchor x="595" y="334" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">本机 Python 服务</text>
+        <text data-detail="context" x="595" y="350" class="t-muted" font-size="9" text-anchor="middle">HTTP API · 会话 · 业务操作</text>
         </g>
 
-        <g id="node-sync" data-node-id="sync" data-node-label="后台同步" tabindex="0" role="button" aria-label="Focus 后台同步, 两小时 / 手动触发, Architecture component" aria-pressed="false" data-node-kind="backend" data-node-sublabel="两小时 / 手动触发" data-node-context="Architecture component">
-          <title>后台同步 · 两小时 / 手动触发 · Architecture component</title>
-          <rect x="620" y="260" width="200" height="76" rx="6" class="c-mask"/>
-          <rect x="620" y="260" width="200" height="76" rx="6" class="c-backend" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(626 266) scale(0.6875)">
-            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
+        <g id="node-sync-worker" data-node-id="sync-worker" data-node-label="同步队列与后台线程" tabindex="0" role="button" aria-label="Focus 同步队列与后台线程, 固定提交 ID · 回执后拉取, Architecture component" aria-pressed="false" data-node-kind="messagebus" data-node-sublabel="固定提交 ID · 回执后拉取" data-node-context="Architecture component">
+          <title>同步队列与后台线程 · 固定提交 ID · 回执后拉取 · Architecture component</title>
+          <rect x="760" y="300" width="200" height="72" rx="6" class="c-mask"/>
+          <rect x="760" y="300" width="200" height="72" rx="6" class="c-messagebus" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="messagebus" class="semantic-sigil s-messagebus" transform="translate(766 306) scale(0.6875)">
+            <path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h11"/>
+            <circle cx="5" cy="4.5" r="1" class="sigil-fill"/>
+            <circle cx="10.5" cy="8" r="1" class="sigil-fill"/>
+            <circle cx="7" cy="11.5" r="1" class="sigil-fill"/>
           </g>
-          <text data-detail-anchor x="720" y="296" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">后台同步</text>
-        <text data-detail="context" x="720" y="312" class="t-muted" font-size="9" text-anchor="middle">两小时 / 手动触发</text>
+          <text data-detail-anchor x="860" y="334" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">同步队列与后台线程</text>
+        <text data-detail="context" x="860" y="350" class="t-muted" font-size="9" text-anchor="middle">固定提交 ID · 回执后拉取</text>
         </g>
 
-        <g id="node-gateway" data-node-id="gateway" data-node-label="workbenchApi" tabindex="0" role="button" aria-label="Focus workbenchApi, CloudBase 云函数, Architecture component" aria-pressed="false" data-node-kind="cloud" data-node-sublabel="CloudBase 云函数" data-node-context="Architecture component">
-          <title>workbenchApi · CloudBase 云函数 · Architecture component</title>
-          <rect x="900" y="260" width="200" height="76" rx="6" class="c-mask"/>
-          <rect x="900" y="260" width="200" height="76" rx="6" class="c-cloud" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="cloud" class="semantic-sigil s-cloud" transform="translate(906 266) scale(0.6875)">
+        <g id="node-cloud-api" data-node-id="cloud-api" data-node-label="workbenchApi" tabindex="0" role="button" aria-label="Focus workbenchApi, CloudBase 云函数 / RPC, Architecture component" aria-pressed="false" data-node-kind="cloud" data-node-sublabel="CloudBase 云函数 / RPC" data-node-context="Architecture component">
+          <title>workbenchApi · CloudBase 云函数 / RPC · Architecture component</title>
+          <rect x="1030" y="300" width="180" height="72" rx="6" class="c-mask"/>
+          <rect x="1030" y="300" width="180" height="72" rx="6" class="c-cloud" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="cloud" class="semantic-sigil s-cloud" transform="translate(1036 306) scale(0.6875)">
             <path d="M4.3 12.5h7.3a2.4 2.4 0 0 0 .2-4.8 4 4 0 0 0-7.5-1.3A3.1 3.1 0 0 0 4.3 12.5Z"/>
           </g>
-          <text data-detail-anchor x="1000" y="296" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">workbenchApi</text>
-        <text data-detail="context" x="1000" y="312" class="t-muted" font-size="9" text-anchor="middle">CloudBase 云函数</text>
+          <text data-detail-anchor x="1120" y="334" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">workbenchApi</text>
+        <text data-detail="context" x="1120" y="350" class="t-muted" font-size="9" text-anchor="middle">CloudBase 云函数 / RPC</text>
         </g>
 
-        <g id="node-database" data-node-id="database" data-node-label="云端 PostgreSQL" tabindex="0" role="button" aria-label="Focus 云端 PostgreSQL, 成员 · 记录 · 提交日志, Architecture component" aria-pressed="false" data-node-kind="database" data-node-sublabel="成员 · 记录 · 提交日志" data-node-context="Architecture component">
-          <title>云端 PostgreSQL · 成员 · 记录 · 提交日志 · Architecture component</title>
-          <rect x="1180" y="260" width="200" height="76" rx="6" class="c-mask"/>
-          <rect x="1180" y="260" width="200" height="76" rx="6" class="c-database" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(1186 266) scale(0.6875)">
+        <g id="node-cloud-db" data-node-id="cloud-db" data-node-label="CloudBase PostgreSQL" tabindex="0" role="button" aria-label="Focus CloudBase PostgreSQL, 工作区 · 记录 · 变更日志, Architecture component" aria-pressed="false" data-node-kind="database" data-node-sublabel="工作区 · 记录 · 变更日志" data-node-context="Architecture component">
+          <title>CloudBase PostgreSQL · 工作区 · 记录 · 变更日志 · Architecture component</title>
+          <rect x="1280" y="300" width="180" height="72" rx="6" class="c-mask"/>
+          <rect x="1280" y="300" width="180" height="72" rx="6" class="c-database" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(1286 306) scale(0.6875)">
             <ellipse cx="8" cy="4" rx="5" ry="2"/>
             <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
           </g>
-          <text data-detail-anchor x="1280" y="296" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">云端 PostgreSQL</text>
-        <text data-detail="context" x="1280" y="312" class="t-muted" font-size="9" text-anchor="middle">成员 · 记录 · 提交日志</text>
+          <text data-detail-anchor x="1370" y="334" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">CloudBase PostgreSQL</text>
+        <text data-detail="context" x="1370" y="350" class="t-muted" font-size="9" text-anchor="middle">工作区 · 记录 · 变更日志</text>
         </g>
 
-        <g id="node-local" data-node-id="local" data-node-label="本机数据" tabindex="0" role="button" aria-label="Focus 本机数据, SQLite / JSON / 图片, Architecture component" aria-pressed="false" data-node-kind="database" data-node-sublabel="SQLite / JSON / 图片" data-node-context="Architecture component">
-          <title>本机数据 · SQLite / JSON / 图片 · Architecture component</title>
-          <rect x="340" y="70" width="200" height="76" rx="6" class="c-mask"/>
-          <rect x="340" y="70" width="200" height="76" rx="6" class="c-database" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(346 76) scale(0.6875)">
+        <g id="node-local-data" data-node-id="local-data" data-node-label="本机数据" tabindex="0" role="button" aria-label="Focus 本机数据, SQLite · JSON · 图片 · 历史, Architecture component" aria-pressed="false" data-node-kind="database" data-node-sublabel="SQLite · JSON · 图片 · 历史" data-node-context="Architecture component">
+          <title>本机数据 · SQLite · JSON · 图片 · 历史 · Architecture component</title>
+          <rect x="500" y="90" width="190" height="72" rx="6" class="c-mask"/>
+          <rect x="500" y="90" width="190" height="72" rx="6" class="c-database" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(506 96) scale(0.6875)">
             <ellipse cx="8" cy="4" rx="5" ry="2"/>
             <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
           </g>
-          <text data-detail-anchor x="440" y="106" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">本机数据</text>
-        <text data-detail="context" x="440" y="122" class="t-muted" font-size="9" text-anchor="middle">SQLite / JSON / 图片</text>
+          <text data-detail-anchor x="595" y="124" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">本机数据</text>
+        <text data-detail="context" x="595" y="140" class="t-muted" font-size="9" text-anchor="middle">SQLite · JSON · 图片 · 历史</text>
         </g>
 
-        <g id="node-rules" data-node-id="rules" data-node-label="共享业务规则" tabindex="0" role="button" aria-label="Focus 共享业务规则, QuickJS 纯函数, Architecture component" aria-pressed="false" data-node-kind="backend" data-node-sublabel="QuickJS 纯函数" data-node-context="Architecture component">
-          <title>共享业务规则 · QuickJS 纯函数 · Architecture component</title>
-          <rect x="340" y="450" width="200" height="76" rx="6" class="c-mask"/>
-          <rect x="340" y="450" width="200" height="76" rx="6" class="c-backend" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(346 456) scale(0.6875)">
+        <g id="node-rules-engine" data-node-id="rules-engine" data-node-label="共享业务规则" tabindex="0" role="button" aria-label="Focus 共享业务规则, 前端模块 / QuickJS 纯函数, Architecture component" aria-pressed="false" data-node-kind="backend" data-node-sublabel="前端模块 / QuickJS 纯函数" data-node-context="Architecture component">
+          <title>共享业务规则 · 前端模块 / QuickJS 纯函数 · Architecture component</title>
+          <rect x="500" y="510" width="190" height="72" rx="6" class="c-mask"/>
+          <rect x="500" y="510" width="190" height="72" rx="6" class="c-backend" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(506 516) scale(0.6875)">
             <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
           </g>
-          <text data-detail-anchor x="440" y="486" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">共享业务规则</text>
-        <text data-detail="context" x="440" y="502" class="t-muted" font-size="9" text-anchor="middle">QuickJS 纯函数</text>
+          <text data-detail-anchor x="595" y="544" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">共享业务规则</text>
+        <text data-detail="context" x="595" y="560" class="t-muted" font-size="9" text-anchor="middle">前端模块 / QuickJS 纯函数</text>
         </g>
 
-        <g id="node-erp" data-node-id="erp" data-node-label="ERP SQL Server" tabindex="0" role="button" aria-label="Focus ERP SQL Server, 只读查询 · 预览确认, Architecture component" aria-pressed="false" data-node-kind="external" data-node-sublabel="只读查询 · 预览确认" data-node-context="Architecture component">
-          <title>ERP SQL Server · 只读查询 · 预览确认 · Architecture component</title>
-          <rect x="60" y="450" width="200" height="76" rx="6" class="c-mask"/>
-          <rect x="60" y="450" width="200" height="76" rx="6" class="c-external" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="external" class="semantic-sigil s-external" transform="translate(66 456) scale(0.6875)">
+        <g id="node-erp-sql" data-node-id="erp-sql" data-node-label="ERP SQL Server" tabindex="0" role="button" aria-label="Focus ERP SQL Server, 只读成本与库存查询, Architecture component" aria-pressed="false" data-node-kind="external" data-node-sublabel="只读成本与库存查询" data-node-context="Architecture component">
+          <title>ERP SQL Server · 只读成本与库存查询 · Architecture component</title>
+          <rect x="250" y="510" width="180" height="72" rx="6" class="c-mask"/>
+          <rect x="250" y="510" width="180" height="72" rx="6" class="c-external" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="external" class="semantic-sigil s-external" transform="translate(256 516) scale(0.6875)">
             <rect x="2.5" y="5" width="8.5" height="8" rx="1.5"/>
             <path d="M8 2.5h5.5V8M13.5 2.5 7.5 8.5"/>
           </g>
-          <text data-detail-anchor x="160" y="486" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">ERP SQL Server</text>
-        <text data-detail="context" x="160" y="502" class="t-muted" font-size="9" text-anchor="middle">只读查询 · 预览确认</text>
+          <text data-detail-anchor x="340" y="544" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">ERP SQL Server</text>
+        <text data-detail="context" x="340" y="560" class="t-muted" font-size="9" text-anchor="middle">只读成本与库存查询</text>
         </g>
 
-        <g id="node-storage" data-node-id="storage" data-node-label="云端图片存储" tabindex="0" role="button" aria-label="Focus 云端图片存储, 成员鉴权 · 原始素材, Architecture component" aria-pressed="false" data-node-kind="cloud" data-node-sublabel="成员鉴权 · 原始素材" data-node-context="Architecture component">
-          <title>云端图片存储 · 成员鉴权 · 原始素材 · Architecture component</title>
-          <rect x="620" y="70" width="200" height="76" rx="6" class="c-mask"/>
-          <rect x="620" y="70" width="200" height="76" rx="6" class="c-cloud" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="cloud" class="semantic-sigil s-cloud" transform="translate(626 76) scale(0.6875)">
-            <path d="M4.3 12.5h7.3a2.4 2.4 0 0 0 .2-4.8 4 4 0 0 0-7.5-1.3A3.1 3.1 0 0 0 4.3 12.5Z"/>
-          </g>
-          <text data-detail-anchor x="720" y="106" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">云端图片存储</text>
-        <text data-detail="context" x="720" y="122" class="t-muted" font-size="9" text-anchor="middle">成员鉴权 · 原始素材</text>
-        </g>
-
-        <g id="node-auth" data-node-id="auth" data-node-label="成员认证" tabindex="0" role="button" aria-label="Focus 成员认证, CloudBase 客户端 SDK, Architecture component" aria-pressed="false" data-node-kind="security" data-node-sublabel="CloudBase 客户端 SDK" data-node-context="Architecture component">
-          <title>成员认证 · CloudBase 客户端 SDK · Architecture component</title>
-          <rect x="60" y="70" width="200" height="76" rx="6" class="c-mask"/>
-          <rect x="60" y="70" width="200" height="76" rx="6" class="c-security" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(66 76) scale(0.6875)">
+        <g id="node-member-auth" data-node-id="member-auth" data-node-label="成员认证" tabindex="0" role="button" aria-label="Focus 成员认证, 令牌与工作区成员校验, Architecture component" aria-pressed="false" data-node-kind="security" data-node-sublabel="令牌与工作区成员校验" data-node-context="Architecture component">
+          <title>成员认证 · 令牌与工作区成员校验 · Architecture component</title>
+          <rect x="1030" y="90" width="180" height="72" rx="6" class="c-mask"/>
+          <rect x="1030" y="90" width="180" height="72" rx="6" class="c-security" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(1036 96) scale(0.6875)">
             <path d="M8 2.2 13 4v3.5c0 3.1-1.8 5.4-5 6.5-3.2-1.1-5-3.4-5-6.5V4Z"/>
             <path d="m5.8 8 1.5 1.5 3-3"/>
           </g>
-          <text data-detail-anchor x="160" y="106" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">成员认证</text>
-        <text data-detail="context" x="160" y="122" class="t-muted" font-size="9" text-anchor="middle">CloudBase 客户端 SDK</text>
+          <text data-detail-anchor x="1120" y="124" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">成员认证</text>
+        <text data-detail="context" x="1120" y="140" class="t-muted" font-size="9" text-anchor="middle">令牌与工作区成员校验</text>
+        </g>
+
+        <g id="node-cloud-assets" data-node-id="cloud-assets" data-node-label="云端原图存储" tabindex="0" role="button" aria-label="Focus 云端原图存储, 校验 · 去重 · 按需下载, Architecture component" aria-pressed="false" data-node-kind="cloud" data-node-sublabel="校验 · 去重 · 按需下载" data-node-context="Architecture component">
+          <title>云端原图存储 · 校验 · 去重 · 按需下载 · Architecture component</title>
+          <rect x="1280" y="510" width="180" height="72" rx="6" class="c-mask"/>
+          <rect x="1280" y="510" width="180" height="72" rx="6" class="c-cloud" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="cloud" class="semantic-sigil s-cloud" transform="translate(1286 516) scale(0.6875)">
+            <path d="M4.3 12.5h7.3a2.4 2.4 0 0 0 .2-4.8 4 4 0 0 0-7.5-1.3A3.1 3.1 0 0 0 4.3 12.5Z"/>
+          </g>
+          <text data-detail-anchor x="1370" y="544" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">云端原图存储</text>
+        <text data-detail="context" x="1370" y="560" class="t-muted" font-size="9" text-anchor="middle">校验 · 去重 · 按需下载</text>
+        </g>
+
+        <g id="node-web-lite" data-node-id="web-lite" data-node-label="轻量网页版" tabindex="0" role="button" aria-label="Focus 轻量网页版, IndexedDB · 云同步, Architecture component" aria-pressed="false" data-node-kind="frontend" data-node-sublabel="IndexedDB · 云同步" data-node-context="Architecture component">
+          <title>轻量网页版 · IndexedDB · 云同步 · Architecture component</title>
+          <rect x="250" y="690" width="180" height="72" rx="6" class="c-mask"/>
+          <rect x="250" y="690" width="180" height="72" rx="6" class="c-frontend" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="frontend" class="semantic-sigil s-frontend" transform="translate(256 696) scale(0.6875)">
+            <rect x="2" y="3" width="12" height="10" rx="2"/>
+            <path d="M2 6.5h12"/>
+            <circle cx="4.1" cy="4.8" r=".7" class="sigil-fill"/>
+            <circle cx="6.3" cy="4.8" r=".7" class="sigil-fill"/>
+          </g>
+          <text data-detail-anchor x="340" y="724" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">轻量网页版</text>
+        <text data-detail="context" x="340" y="740" class="t-muted" font-size="9" text-anchor="middle">IndexedDB · 云同步</text>
         </g>
 
         <!-- Connection labels -->
 
 
+        <g data-detail="context" data-edge-from="python-service" data-edge-to="local-data" data-edge-label="先保存本机" data-edge-key="2" data-edge-id="local-save">
+          <rect x="566" y="280" width="58" height="14" rx="3" class="c-mask"/>
+          <text x="595" y="290" class="t-muted" font-size="8" text-anchor="middle">先保存本机</text>
+        </g>
+
+        <g data-detail="context" data-edge-from="python-service" data-edge-to="erp-sql" data-edge-label="只读查询" data-edge-key="4" data-edge-id="erp-read">
+          <rect x="440.8" y="424.5" width="48.4" height="14" rx="3" class="c-mask"/>
+          <text x="465" y="434.5" class="t-messagebus" font-size="8" text-anchor="middle">只读查询</text>
+        </g>
+        <g data-detail="context" data-edge-from="python-service" data-edge-to="sync-worker" data-edge-label="待提交记录" data-edge-key="5" data-edge-id="queue-sync">
+          <rect x="696" y="316" width="58" height="14" rx="3" class="c-mask"/>
+          <text x="725" y="326" class="t-muted" font-size="8" text-anchor="middle">待提交记录</text>
+        </g>
 
 
 
 
-
-
-
+        <g data-detail="context" data-edge-from="web-lite" data-edge-to="cloud-api" data-edge-label="协议 v2" data-edge-key="10" data-edge-id="web-cloud">
+          <rect x="984.2" y="514.5" width="43.6" height="14" rx="3" class="c-mask"/>
+          <text x="1006" y="524.5" class="t-muted" font-size="8" text-anchor="middle">协议 v2</text>
+        </g>
 
         <!-- Legend -->
         <g data-legend data-legend-bridge>
-          <text x="40" y="558" class="t-primary" font-size="10" font-weight="600">Legend</text>
-          <g data-legend-semantic-kind="frontend" data-legend-kind="frontend" data-legend-label="Frontend" data-legend-x="40" data-legend-baseline="578" data-legend-width="82">
-            <rect x="40" y="570" width="14" height="9" rx="2" class="c-frontend" stroke-width="1"/>
-            <text x="61" y="578" class="t-muted" font-size="8">Frontend</text>
+          <text x="40" y="784" class="t-primary" font-size="10" font-weight="600">Legend</text>
+          <g data-legend-semantic-kind="frontend" data-legend-kind="frontend" data-legend-label="Frontend" data-legend-x="40" data-legend-baseline="804" data-legend-width="82">
+            <rect x="40" y="796" width="14" height="9" rx="2" class="c-frontend" stroke-width="1"/>
+            <text x="61" y="804" class="t-muted" font-size="8">Frontend</text>
           </g>
-          <g data-legend-semantic-kind="backend" data-legend-kind="backend" data-legend-label="Backend" data-legend-x="144" data-legend-baseline="578" data-legend-width="77">
-            <rect x="144" y="570" width="14" height="9" rx="2" class="c-backend" stroke-width="1"/>
-            <text x="165" y="578" class="t-muted" font-size="8">Backend</text>
+          <g data-legend-semantic-kind="backend" data-legend-kind="backend" data-legend-label="Backend" data-legend-x="144" data-legend-baseline="804" data-legend-width="77">
+            <rect x="144" y="796" width="14" height="9" rx="2" class="c-backend" stroke-width="1"/>
+            <text x="165" y="804" class="t-muted" font-size="8">Backend</text>
           </g>
-          <g data-legend-semantic-kind="database" data-legend-kind="database" data-legend-label="Database" data-legend-x="243" data-legend-baseline="578" data-legend-width="82">
-            <rect x="243" y="570" width="14" height="9" rx="2" class="c-database" stroke-width="1"/>
-            <text x="264" y="578" class="t-muted" font-size="8">Database</text>
+          <g data-legend-semantic-kind="database" data-legend-kind="database" data-legend-label="Database" data-legend-x="243" data-legend-baseline="804" data-legend-width="82">
+            <rect x="243" y="796" width="14" height="9" rx="2" class="c-database" stroke-width="1"/>
+            <text x="264" y="804" class="t-muted" font-size="8">Database</text>
           </g>
-          <g data-legend-semantic-kind="cloud" data-legend-kind="cloud" data-legend-label="Cloud" data-legend-x="347" data-legend-baseline="578" data-legend-width="67">
-            <rect x="347" y="570" width="14" height="9" rx="2" class="c-cloud" stroke-width="1"/>
-            <text x="368" y="578" class="t-muted" font-size="8">Cloud</text>
+          <g data-legend-semantic-kind="cloud" data-legend-kind="cloud" data-legend-label="Cloud" data-legend-x="347" data-legend-baseline="804" data-legend-width="67">
+            <rect x="347" y="796" width="14" height="9" rx="2" class="c-cloud" stroke-width="1"/>
+            <text x="368" y="804" class="t-muted" font-size="8">Cloud</text>
           </g>
-          <g data-legend-semantic-kind="security" data-legend-kind="security" data-legend-label="Security" data-legend-x="436" data-legend-baseline="578" data-legend-width="82">
-            <rect x="436" y="570" width="14" height="9" rx="2" class="c-security" stroke-width="1"/>
-            <text x="457" y="578" class="t-muted" font-size="8">Security</text>
+          <g data-legend-semantic-kind="security" data-legend-kind="security" data-legend-label="Security" data-legend-x="436" data-legend-baseline="804" data-legend-width="82">
+            <rect x="436" y="796" width="14" height="9" rx="2" class="c-security" stroke-width="1"/>
+            <text x="457" y="804" class="t-muted" font-size="8">Security</text>
           </g>
-          <g data-legend-semantic-kind="external" data-legend-kind="external" data-legend-label="External" data-legend-x="540" data-legend-baseline="578" data-legend-width="82">
-            <rect x="540" y="570" width="14" height="9" rx="2" class="c-external" stroke-width="1"/>
-            <text x="561" y="578" class="t-muted" font-size="8">External</text>
+          <g data-legend-semantic-kind="messagebus" data-legend-kind="messagebus" data-legend-label="Message bus" data-legend-x="540" data-legend-baseline="804" data-legend-width="97">
+            <rect x="540" y="796" width="14" height="9" rx="2" class="c-messagebus" stroke-width="1"/>
+            <text x="561" y="804" class="t-muted" font-size="8">Message bus</text>
+          </g>
+          <g data-legend-semantic-kind="external" data-legend-kind="external" data-legend-label="External" data-legend-x="659" data-legend-baseline="804" data-legend-width="82">
+            <rect x="659" y="796" width="14" height="9" rx="2" class="c-external" stroke-width="1"/>
+            <text x="680" y="804" class="t-muted" font-size="8">External</text>
           </g>
         </g>
       </svg>
@@ -4925,30 +4974,44 @@
     <div class="cards">
       <div class="card">
         <div class="card-header">
-          <div class="card-dot emerald"></div>
+          <div class="card-dot cyan"></div>
           <h3>本机优先</h3>
         </div>
         <ul>
-          <li>&bull; 编辑、历史版本与同步队列保存在本机。</li>
-          <li>&bull; ERP 成本、可销数和 SQL 凭据不参与业务云同步。</li>
+          <li>&bull; 编辑先写 SQLite / JSON</li>
+          <li>&bull; 打包后数据位于 EXE 同级 data</li>
+          <li>&bull; ERP 凭据仅本机加密保存</li>
         </ul>
       </div>
 
       <div class="card">
         <div class="card-header">
-          <div class="card-dot cyan"></div>
-          <h3>同步顺序</h3>
+          <div class="card-dot emerald"></div>
+          <h3>受控同步</h3>
         </div>
         <ul>
-          <li>&bull; 上传提交并确认回执，再分页拉取更新。</li>
-          <li>&bull; 冲突需人工选择；不确定提交保留原 ID。</li>
+          <li>&bull; 成员与工作区双重校验</li>
+          <li>&bull; 固定提交 ID 与服务端回执</li>
+          <li>&bull; 冲突显式选择，不按客户端时间覆盖</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-dot amber"></div>
+          <h3>数据边界</h3>
+        </div>
+        <ul>
+          <li>&bull; ERP 成本与库存不进业务云同步</li>
+          <li>&bull; 原图按需上传与下载</li>
+          <li>&bull; 轻量网页版不伪造 ERP 数据</li>
         </ul>
       </div>
     </div>
 
     <!-- Footer -->
     <p class="footer">
-      Architecture diagram &bull; Built with Archify<span class="no-print"> &bull; <a class="artifact-start-link" href="https://tt-a1i.github.io/archify/start.html?type=architecture&amp;source=artifact" target="_blank" rel="noopener noreferrer">Create yours &nearr;</a> &bull; Hover to trace &bull; <kbd>R</kbd> route &bull; Click to focus &bull; <kbd>+</kbd>/<kbd>&minus;</kbd> zoom &bull; <kbd>M</kbd> radar &bull; <kbd>T</kbd> theme &bull; <kbd>E</kbd> export</span>
+      Architecture diagram &bull; Built with Archify<span class="no-print"> &bull; <a class="artifact-start-link" href="https://tt-a1i.github.io/archify/start.html?type=architecture&amp;source=artifact" target="_blank" rel="noopener noreferrer">Create yours &nearr;</a> &bull; Hover to trace &bull; <kbd>R</kbd> route &bull; Click to focus &bull; <kbd>+</kbd>/<kbd>&minus;</kbd> zoom &bull; <kbd>M</kbd> radar &bull; <kbd>[</kbd>/<kbd>]</kbd> views &bull; <kbd>P</kbd> play story &bull; <kbd>T</kbd> theme &bull; <kbd>E</kbd> export</span>
     </p>
   </div>
 

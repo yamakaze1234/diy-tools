@@ -13,6 +13,11 @@ export function sameEditingState(a,b){return [...Object.keys(collections),'shopS
 export function mergeEditingState(base,local,remote){
  const result=clone(remote);let conflict=false;
  const merge=(b,l,r)=>{
+  // Materialization fills unknown stock on new part rows. Missing and null
+  // mean the same thing; neither is a concurrent edit during first save.
+  if([b,l,r].every(v=>v&&typeof v==='object'&&!Array.isArray(v)&&'goodsId' in v)&&[b,l,r].some(v=>'stockAvailable' in v)){
+   [b,l,r]=[b,l,r].map(v=>({...v,stockAvailable:v.stockAvailable??null}));
+  }
   if(same(l,b))return clone(r);if(same(r,b)||same(l,r))return clone(l);
   if(b&&l&&r&&typeof b==='object'&&typeof l==='object'&&typeof r==='object'&&!Array.isArray(l)&&!Array.isArray(r)){
    if('goodsId' in b&&(l.goodsId!==b.goodsId||r.goodsId!==b.goodsId)&&!same(withoutNewLineId(b,l),withoutNewLineId(b,b))&&!same(withoutNewLineId(b,r),withoutNewLineId(b,b))){conflict=true;return clone(l);}

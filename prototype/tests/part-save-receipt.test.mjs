@@ -1,8 +1,28 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mergeEditingState,sameEditingState} from '../workspace-ui-merge.js';
+import {blankConfig} from '../core.js';
+import {normalizeWorkspaceState} from '../shops.js';
+import {applyWorkspace,projectWorkspace} from '../workspace-records.mjs';
 const fixture=()=>({configs:[{id:'c',parts:[{slot:'CPU',goodsId:'100',name:'CPU A',qty:1}],actualParts:[{slot:'CPU',goodsId:'100',name:'CPU A',qty:1}]}],templates:[],sourceCatalog:[],costSource:[],caseGallery:[],shopSettings:{}});
 const reversed=o=>Array.isArray(o)?o.map(reversed):o&&typeof o==='object'?Object.fromEntries(Object.entries(o).reverse().map(([k,v])=>[k,reversed(v)])):o;
+
+test('新建配置首次保存回执补齐未知库存时继续选件不冲突',()=>{
+ const base=normalizeWorkspaceState({configs:[blankConfig(null,{id:'p',shopId:'intel',name:'新链接'})],templates:[],sourceCatalog:[],costSource:[],caseGallery:[],shopSettings:{}});
+ const remote=applyWorkspace(base,projectWorkspace(base)),local=structuredClone(base);
+ for(const field of ['parts','actualParts'])Object.assign(local.configs[0][field][0],{goodsId:'47523',name:'CPU',erp:1450,tax:1400,stockAvailable:8});
+ const result=mergeEditingState(base,local,remote);
+ assert.equal(result.conflict,false);
+ for(const field of ['parts','actualParts']){
+  const row=result.state.configs[0][field][0];
+  assert.equal(row.goodsId,'47523');assert.equal(row.erp,1450);assert.equal(row.tax,1400);assert.equal(row.stockAvailable,8);
+  assert.equal(row.lineId,remote.configs[0][field][0].lineId);
+ }
+ const saved=applyWorkspace(result.state,projectWorkspace(result.state));
+ assert.equal(mergeEditingState(result.state,result.state,saved).conflict,false);
+ remote.configs[0].parts[0].qty=2;
+ assert.equal(mergeEditingState(base,local,remote).conflict,true);
+});
 test('保存回执仅重排字段，连续替换配件不误报冲突',()=>{
  const base=fixture(),remote=reversed(base),local=fixture();
  local.configs[0].parts[0].goodsId='200';local.configs[0].parts[0].name='CPU B';

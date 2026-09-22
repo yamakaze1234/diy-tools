@@ -215,3 +215,7 @@ body.login-required > :not(#login-screen){display:none!important}
 .part-model [data-part-name]{width:100%;font-size:12px;padding:8px 10px}
 
 .part-model [data-part-name]{text-align:left}.part-model .product-result{color:var(--text,#132b50)}
+
+.config-item[draggable=true]{cursor:grab}.config-item.config-dragging{opacity:.45}.config-item.config-drop-before{box-shadow:0 -3px 0 #1677ff}.config-item.config-drop-after{box-shadow:0 3px 0 #1677ff}
+
+#clear-selection{padding:2px 6px;font-size:11px;margin-left:5px}#editing-context{flex-wrap:wrap}#editing-context>div{flex:1;min-width:120px}#editing-context strong{white-space:normal;overflow-wrap:anywhere}#locate-editing{white-space:nowrap}.config-item.config-located{outline:2px solid #1677ff;background:#e5f0ff}

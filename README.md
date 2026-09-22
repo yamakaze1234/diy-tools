@@ -1,6 +1,6 @@
 # DIY 配置工作台
 
-面向 DIY 整机业务的本地优先工作台，用于维护多店商品配置、核算成本与利润、读取 ERP 库存、制作配置图，并通过 CloudBase 与团队成员同步。当前源码版本为 **Python 桌面版 1.0.3**，支持 Windows 10/11 x64。
+面向 DIY 整机业务的本地优先工作台，用于维护多店商品配置、核算成本与利润、读取 ERP 库存、制作配置图，并通过 CloudBase 与团队成员同步。当前源码版本为 **Python 桌面版 1.0.5**，支持 Windows 10/11 x64。
 
 ## 快速入口
 
@@ -69,6 +69,7 @@ if (!(Test-Path prototype/.env.local)) { Copy-Item prototype/.env.example protot
 # 编辑 prototype/.env.local，填写自己的 CloudBase 客户端配置。
 npm run build:sync --prefix prototype
 node python-desktop/build-web.mjs
+Copy-Item prototype/.env.local python-desktop/web/.env.local
 uv run --project python-desktop --locked python -X utf8 python-desktop/main.py
 ```
 

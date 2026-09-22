@@ -1,34 +1,41 @@
 import {modelCanvasWidth,posterColumns} from './poster-width.js';
 import {moduleFrame,textFrame,displayedText} from './poster-geometry.js';
-import {richTextLayout} from './poster-text.js';
+import {richTextLayout,fitTextScale} from './poster-text.js';
 import {displayUpgrade,doubleMemoryUpgrade} from './memory-upgrade.js';
 import {wrapText,posterModules,posterParts,posterPalette} from './core.js';
 import {suggestedName} from './legacy-names.js';
-import {shopById,shopPalette,shopAddonColors,shopServiceTextColor,shopServiceColor} from './shops.js';
+import {shopById,shopPalette,shopAddonColors,shopServiceTextColor,shopServiceColor,shopPosterOuterColor} from './shops.js';
 import {posterImageRegion} from './poster-images.js';
-const images=new Map();
-export async function getImage(url){if(!url)return null;if(!images.has(url))images.set(url,new Promise((resolve,reject)=>{const i=new Image(),timer=setTimeout(()=>{images.delete(url);i.onload=i.onerror=null;reject(Error('图片载入超时，请重试或更换素材'));},15000);i.onload=()=>{clearTimeout(timer);while(images.size>24)images.delete(images.keys().next().value);resolve(i);};i.onerror=()=>{clearTimeout(timer);images.delete(url);reject(Error('图片载入失败，请重新选择素材'));};i.src=url;}));return images.get(url);}
+import {normalizePosterDesign,paddedSquare} from './poster-design.js';
+import {getImage} from './image-cache.js';
+export {getImage} from './image-cache.js';
 const bound=(value,min,max)=>Math.max(min,Math.min(max,value));
 const hasText=value=>!!String(value??'').trim();
 const partTitle=p=>String(p.name||'').trimEnd()+(Number(p.qty)>1?` ×${p.qty}`:'');
 const entryContent=entry=>typeof entry==='string'?hasText(entry):hasText(entry?.text)||hasText(entry?.note);
 function moduleEntries(c,m){return (m.type==='addons'?c.addons:m.type==='benefits'?c.benefits:[{text:m.text||'',note:''}])?.map((entry,index)=>({entry,index})).filter(({entry})=>entryContent(entry))||[];}
-export async function renderPoster(c,width=1400,{interactive=false}={}){
+export function defaultPosterWidth(c){return c.layout==='square'?1400:1000;}
+export async function renderPoster(c,width=defaultPosterWidth(c),{interactive=false}={}){
  await document.fonts.ready;
- const image=c.caseVisible===false?null:await getImage(c.caseImage),square=c.layout==='square',dark=c.theme==='dark';
- const fixed=c.freeCanvasLayouts?.[c.layout],mobile=fixed?.compact??(square&&!fixed),autoWidth=fixed?(fixed.autoWidth??(mobile&&c.autoWidth!==false)):c.autoWidth!==false;
+ if(c.layout==='square'&&c.skuMode==='padded'){
+  const detail=await renderPoster({...c,layout:'long'},width);
+  return {...detail,canvas:paddedSquare(detail.canvas,width),base:width,height:width,regions:[],textRegions:[],imageRegion:null,addedImageRegions:[],padding:true,readOnly:true};
+ }
+ if(c.layout==='square'){c=normalizePosterDesign(structuredClone(c));c.textStyles=c.skuTextStyles||{};c.caseVisible=false;c.posterImages=[];}
+ const square=c.layout==='square',image=c.caseVisible===false?null:await getImage(c.caseImage),dark=c.theme==='dark';
+ const fixed=c.freeCanvasLayouts?.[c.layout],mobile=square?false:fixed?.compact??false,autoWidth=square?false:fixed?(fixed.autoWidth??false):c.autoWidth===true;
  const tightRows=fixed?fixed.tightRows===true:autoWidth;
  const unifiedPanel=fixed?fixed.unifiedPanel===true:true;
  const centeredHeader=mobile&&(fixed?fixed.centeredHeader===true:true);
  const titleUnderLogo=centeredHeader&&(!fixed||fixed.titleUnderLogo===true);
- let base=fixed?.base||700;
+ let base=fixed?.base||(square?700:668);
  const shop=shopById(c.shopId),colors={...(c.shopId?shopPalette(c.shopId,c.theme):posterPalette(c.theme)),...c.palette};
  const brandLogo=shop.brandLogo?await getImage(shop.brandLogo.src):null;
  const measure=document.createElement('canvas').getContext('2d');
  if(autoWidth&&!fixed)base=modelCanvasWidth(measure,c,{tightRows,unifiedPanel});
  const font=s=>`${s.italic?'italic ':''}${s.weight} ${s.size}px "${s.fontFamily}",sans-serif`;
  const parts=posterParts(c).filter(p=>hasText(p.name));
- const visible=posterModules(c).filter(m=>m.visible&&(m.type==='parts'?parts.length:m.type==='footer'?hasText(c.footer):m.type==='service'?hasText(m.text):['addons','benefits','custom'].includes(m.type)?moduleEntries(c,m).length:true));
+ const visible=posterModules(c).filter(m=>m.visible&&(!square||!['service','footer'].includes(m.type))&&(m.type==='parts'?parts.length:m.type==='footer'?hasText(c.footer):m.type==='service'?hasText(m.text):['addons','benefits','custom'].includes(m.type)?moduleEntries(c,m).length:true));
  // Extra room belongs mostly inside content rows, not in a large gap above the footer.
  const rowUnits=visible.reduce((sum,m)=>sum+(m.type==='parts'?parts.length*2:m.type==='service'?2:['addons','benefits','custom'].includes(m.type)?2*Math.ceil(moduleEntries(c,m).length/(m.type==='custom'?1:2)):0),0);
  const stretchUnits=rowUnits+Math.max(0,visible.length-1);
@@ -49,11 +56,25 @@ export async function renderPoster(c,width=1400,{interactive=false}={}){
    const boxWidth=Number.isFinite(transform.boxWidth)?Math.max(20,transform.boxWidth):null;
    const boxHeight=Number.isFinite(transform.boxHeight)?Math.max(12,transform.boxHeight):0;
    const flowMax=max;max=boxWidth??max;
-   if(custom.ranges?.length){
-    const lines=richTextLayout(measure,value,max,s,custom.ranges,font),height=Math.max(boxHeight,lines.reduce((n,l)=>n+l.height,0)),inkWidth=boxWidth??Math.max(20,...lines.map(l=>l.width)),flowHeight=boxWidth!==null?richTextLayout(measure,value,flowMax,s,custom.ranges,font).reduce((n,l)=>n+l.height,0):lines.reduce((n,l)=>n+l.height,0);if(align==='center')x+=(max-inkWidth)/2;
+   // SKU shop names stay on one line, including the two longer flagship names.
+   const singleLine=square&&key==='header.shop';
+   if(singleLine){value=String(value??'').replace(/[\r\n]+/g,' ');measure.font=font(s);const measured=measure.measureText(value).width;if(measured>max)s.size*=max/measured*.995;}
+
+   let fitScale=1;
+   if(transform.autoFit&&boxWidth!==null&&boxHeight&&String(value??'').trim()){
+    const measured=scale=>{
+     if(custom.ranges?.length&&!singleLine)return richTextLayout(measure,value,max,s,custom.ranges,font,scale);
+     measure.font=font({...s,size:s.size*scale});
+     return (singleLine?[value]:wrapText(measure,value,max)).map(text=>({width:measure.measureText(text).width,height:s.size*scale*lineHeight}));
+    };
+    fitScale=fitTextScale(measured,max,boxHeight);
+    if(!custom.ranges?.length||singleLine)s.size*=fitScale;
+   }
+   if(custom.ranges?.length&&!singleLine){
+    const lines=richTextLayout(measure,value,max,s,custom.ranges,font,fitScale),height=Math.max(boxHeight,lines.reduce((n,l)=>n+l.height,0)),inkWidth=boxWidth??Math.max(20,...lines.map(l=>l.width)),flowHeight=boxWidth!==null?richTextLayout(measure,value,flowMax,s,custom.ranges,font).reduce((n,l)=>n+l.height,0):lines.reduce((n,l)=>n+l.height,0);if(align==='center')x+=(max-inkWidth)/2;
     addText({key,label,moduleId,value:String(value??''),x,top,width:inkWidth,height,lineCount:lines.length,...s},ctx=>{ctx.save();let y=top;for(const line of lines){for(const glyph of line.glyphs){ctx.font=font(glyph.style);ctx.fillStyle=glyph.style.color;ctx.fillText(glyph.ch,x+glyph.x+(align==='center'?(inkWidth-line.width)/2:0),y);}y+=line.height;}ctx.restore();});return flowHeight;
    }
-   measure.font=font(s);const lines=wrapText(measure,value,max),lh=s.size*lineHeight,height=Math.max(boxHeight,lines.length*lh),flowHeight=wrapText(measure,value,flowMax).length*lh;
+   measure.font=font(s);const lines=singleLine?[value]:wrapText(measure,value,max),lh=s.size*lineHeight,height=Math.max(boxHeight,lines.length*lh),flowHeight=(singleLine?1:wrapText(measure,value,flowMax).length)*lh;
    const inkWidth=boxWidth??Math.min(max,Math.max(20,...lines.map(t=>measure.measureText(t).width)));
    if(align==='center')x+=(max-inkWidth)/2;
    addText({key,label,moduleId,value:String(value??''),x,top,width:inkWidth,height,lineCount:lines.length,...s},ctx=>{ctx.save();ctx.font=font(s);ctx.fillStyle=s.color;if(centered)ctx.textBaseline='middle';if(align==='center')ctx.textAlign='center';lines.forEach((line,i)=>ctx.fillText(line,x+(align==='center'?inkWidth/2:0),top+i*lh+(centered?lh/2:0)));ctx.restore();});
@@ -63,7 +84,24 @@ export async function renderPoster(c,width=1400,{interactive=false}={}){
   for(const [mi,m] of visible.entries()){
    const opStartModule=ops.length,textStartModule=textRegions.length;
    const start=y,size=Number(m.size)*(unifiedPanel&&m.type==='header'?(square?1:1.24):square?.86:1),weight=Number(m.weight)||400,color=m.color||colors.text,gap=space(Number(m.gap)||0)+(mi<visible.length-1?stretch:0);
-   if(m.type==='header'){
+   if(m.type==='header'&&square){
+    // Left: logo above the shop. Right: centered configuration/version and SKU name.
+    const unit=base/1000,left=54*unit,brandTop=25*unit,right=355*unit,rightWidth=588*unit;
+    const logoWidth=(c.shopId==='gigabyte'?250:200)*unit;
+    let logoHeight=42*unit;
+    if(brandLogo){
+     const [sx,sy,sw,sh]=shop.brandLogo.crop||[0,0,brandLogo.width,brandLogo.height];logoHeight=logoWidth*sh/sw;
+     const logoColor=c.textStyles?.['header.brand']?.color||(dark?'#ffffff':'#161719');let mark;
+     addText({key:'header.brand',label:'品牌 Logo',moduleId:m.id,value:shop.brandText,isLogo:true,x:left,top:brandTop,width:logoWidth,height:logoHeight,size:logoHeight,styleSize:logoHeight,weight:700,color:logoColor,fontFamily:c.fontFamily||'Microsoft YaHei'},ctx=>{if(!mark){mark=document.createElement('canvas');mark.width=sw;mark.height=sh;const ink=mark.getContext('2d');ink.drawImage(brandLogo,sx,sy,sw,sh,0,0,sw,sh);ink.globalCompositeOperation='source-in';ink.fillStyle=logoColor;ink.fillRect(0,0,sw,sh);}ctx.drawImage(mark,left,brandTop,logoWidth,logoHeight);});
+    }else logoHeight=block('header.brand','品牌标识',m.id,c.brandText||shop.brandText,left,brandTop,260*unit,52*unit,700,colors.accent);
+    const shopTop=Math.max(92*unit,brandTop+logoHeight+3*unit);
+    const shopBottom=shopTop+block('header.shop','店铺标题',m.id,c.shop||shop.name,(c.shopId==='gigabyte'?62:46)*unit,shopTop,305*unit,(c.shopId==='gigabyte'?44:36)*unit,700,color,1.2);
+    let rightBottom=61*unit;
+    if(c.posterFields?.name!==false||c.posterFields?.version!==false)rightBottom+=block('header.version','配置名称与版本',m.id,[c.posterFields?.name===false?'':c.name,c.posterFields?.version===false?'':c.version].filter(Boolean).join(' · '),right,rightBottom,rightWidth,36*unit,700,color,1.25,false,'center');
+    const subtitle=c.posterFields?.subtitle===false?'':c.posterSubtitle??c.shortName??suggestedName(c,'compact');
+    if(subtitle){rightBottom=Math.max(112*unit,rightBottom+6*unit);rightBottom+=block('header.subtitle','SKU 简称',m.id,subtitle,right,rightBottom,rightWidth,26*unit,500,colors.accent,1.25,false,'center');}
+    y=Math.max(166*unit,shopBottom+12*unit,rightBottom+12*unit,brandTop+logoHeight+12*unit);
+   }else if(m.type==='header'){
     const reserved=unifiedPanel?(square?128:180):square?112:138,titleWidth=content-(image?reserved+22:0);
     const brandWidth=centeredHeader?(unifiedPanel?156:120):titleWidth,brandValue=c.brandText||shop.brandText;
     let brandSize=centeredHeader?(unifiedPanel?44:36):square?23:unifiedPanel?44:28;
@@ -74,7 +112,8 @@ export async function renderPoster(c,width=1400,{interactive=false}={}){
      ops.pop();const logoRegion=textRegions.pop();
      const [sx,sy,sw,sh]=shop.brandLogo.crop||[0,0,brandLogo.width,brandLogo.height],logoWidth=Math.min(unifiedPanel?(centeredHeader?156:180):titleWidth,(brandHeight-5)*sw/sh),logoHeight=logoWidth*sh/sw;
      let mark;
-     addText({...logoRegion,label:'品牌 Logo',isLogo:true,width:logoWidth,height:logoHeight,color:c.textStyles?.['header.brand']?.color||(dark?'#ffffff':'#111111')},ctx=>{if(!mark){mark=document.createElement('canvas');mark.width=sw;mark.height=sh;const ink=mark.getContext('2d');ink.drawImage(brandLogo,sx,sy,sw,sh,0,0,sw,sh);ink.globalCompositeOperation='source-in';ink.fillStyle=c.textStyles?.['header.brand']?.color||(dark?'#ffffff':'#111111');ink.fillRect(0,0,sw,sh);}ctx.drawImage(mark,pad,brandTop,logoWidth,logoHeight);});
+     const logoColor=c.textStyles?.['header.brand']?.color||(dark?(shop.brandLogo.darkColor||colors.accent):(shop.brandLogo.lightColor||'#111111'));
+     addText({...logoRegion,label:'品牌 Logo',isLogo:true,width:logoWidth,height:logoHeight,color:logoColor},ctx=>{if(!mark){mark=document.createElement('canvas');mark.width=sw;mark.height=sh;const ink=mark.getContext('2d');ink.drawImage(brandLogo,sx,sy,sw,sh,0,0,sw,sh);ink.globalCompositeOperation='source-in';ink.fillStyle=logoColor;ink.fillRect(0,0,sw,sh);}ctx.drawImage(mark,pad,brandTop,logoWidth,logoHeight);});
     }
     if(centeredHeader){
      const brandEdge=pad+Math.max(unifiedPanel?156:96,textRegions.at(-1)?.width||0)+12,right=base-pad-(image?reserved+14:0);
@@ -97,7 +136,7 @@ export async function renderPoster(c,width=1400,{interactive=false}={}){
      // Saved reference frames: square 710px canvas, detail 668px canvas.
      // Keep their right inset as automatic model width changes; explicit edits still override below.
      imageDefault=unifiedPanel
-      ?square?{x:base-180.9256399972098,y:start-32,size:128}:{x:base-216.4765625,y:start,size:172}
+      ?square?{x:base-180.9256399972098,y:0,size:128}:{x:base-207.30224609375,y:43.86,size:172}
       :{x:base-pad-reserved,y:start,size:reserved};
      y=Math.max(y,start+(unifiedPanel?(square?106:170):square?94:130));
     }
@@ -110,9 +149,9 @@ export async function renderPoster(c,width=1400,{interactive=false}={}){
     }
     y+=gap;
    }else if(m.type==='parts'){
-    y+=mobile?10:0;
-    if(relocatedTitle!==m.id)y+=block(`${m.id}.title`,'配件清单标题',m.id,m.title,pad+(mobile?12:0),y,content-(mobile?24:0),square?15:unifiedPanel?22:18,700,colors.accent)+space(7);if(!unifiedPanel)line(y);y+=space(10);
-    const panelTop=relocatedTitle===m.id?start:y;
+    y+=square?12:mobile?10:0;
+    if(relocatedTitle!==m.id)y+=block(`${m.id}.title`,'配件清单标题',m.id,m.title,pad+(square||mobile?12:0),y,content-(square||mobile?24:0),square?17:unifiedPanel?22:18,700,colors.accent)+space(7);if(!unifiedPanel)line(y);y+=space(10);
+    const panelTop=square||relocatedTitle===m.id?start:y;
     const {inset,categoryWidth,rightInset,labelGap}=posterColumns(c,{tightRows,unifiedPanel,compact:mobile});
     const nameX=pad+categoryWidth,fullWidth=content-categoryWidth-rightInset;
     // One common model size follows the longest name, with a readable floor;
@@ -185,11 +224,14 @@ export async function renderPoster(c,width=1400,{interactive=false}={}){
  if(!fixed&&square)for(let n=1;result.needed>base&&n<=10;n++)result=layout(1-n*.035);
  // Very tall descriptions may need more square space than the longest model alone.
  if(autoWidth&&square&&!fixed&&result.needed>base){for(let n=0;result.needed>base&&n<12;n++){base=Math.ceil(Math.max(base+12,result.needed));result=layout(result.density);}}
- const height=square?base:fixed?.height||(autoWidth?result.needed:Math.max(Math.round(base*1.31),result.needed)),overflow=!fixed&&square&&result.needed>base;
+ const textBottom=Math.max(0,...result.textRegions.map(r=>{const box=displayedText(r,c.textTransforms?.[c.layout]?.[r.key],result.regions.find(m=>m.id===r.moduleId),c.moduleTransforms?.[c.layout]?.[r.moduleId]);return box.top+box.height+24;}));
+ const frame=c.caseTransforms?.[c.layout],imageBottom=image?Number(frame?.y??result.imageDefault?.y??0)+Number(frame?.height||frame?.size||result.imageDefault?.size||0)+24:0;
+ const height=square?base:Math.ceil(Math.max(result.needed,textBottom,imageBottom)),overflow=square&&Math.max(result.needed,textBottom)>base;
  if(!fixed&&!overflow&&stretchUnits&&height>result.needed)result=layout(result.density,(height-result.needed)/stretchUnits);
  const canvas=document.createElement('canvas');canvas.width=Number(width);canvas.height=Math.ceil(height*width/base);
  if(canvas.height>22000)throw Error('图片过长，请减少模块或选择较小导出宽度');
- const ctx=canvas.getContext('2d');ctx.scale(width/base,width/base);ctx.fillStyle=colors.bg;ctx.fillRect(0,0,base,height);ctx.textBaseline='top';
+ const cardColor=dark?colors.bg:'#ffffff',outerColor=shopPosterOuterColor(c.shopId,c.theme);
+ const ctx=canvas.getContext('2d');ctx.scale(width/base,width/base);ctx.fillStyle=cardColor;ctx.fillRect(0,0,base,height);ctx.textBaseline='top';
  // Keep the expensive text/layout render while moving images in the editor.
  const background=interactive?document.createElement('canvas'):null;
  if(background){background.width=canvas.width;background.height=canvas.height;background.getContext('2d').drawImage(canvas,0,0);}
@@ -212,15 +254,17 @@ export async function renderPoster(c,width=1400,{interactive=false}={}){
   const region=posterImageRegion(layer,config.layout,base,height);
   ctx.drawImage(added,region.x,region.top,region.width,region.height);addedImageRegions.push(region);
  }
- // Mask the complete composition, including images moved over the outer edge.
- // Transparent PNG corners keep the same silhouette in preview and export.
+ // Inset the complete composition into a rounded card, then fill the outer
+ // margin with gray. Keep layout coordinates and export dimensions unchanged.
  ctx.save();ctx.setTransform(width/base,0,0,width/base,0,0);
  ctx.globalCompositeOperation='destination-in';ctx.fillStyle='#000';
- ctx.beginPath();ctx.roundRect(0,0,base,height,18);ctx.fill();ctx.restore();
+ ctx.beginPath();ctx.roundRect(8,10,base-16,height-20,18);ctx.fill();
+ ctx.globalCompositeOperation='destination-over';ctx.fillStyle=outerColor;
+ ctx.fillRect(0,0,base,height);ctx.restore();
  output.imageRegion=imageRegion;output.addedImageRegions=addedImageRegions;return output;
  }
  function drawLayout(config){
-  drawingConfig=config;ctx.save();ctx.setTransform(width/base,0,0,width/base,0,0);ctx.fillStyle=colors.bg;ctx.fillRect(0,0,base,height);ctx.textBaseline='top';for(const op of result.ops)op(ctx);ctx.restore();
+  drawingConfig=config;ctx.save();ctx.setTransform(width/base,0,0,width/base,0,0);ctx.fillStyle=cardColor;ctx.fillRect(0,0,base,height);ctx.textBaseline='top';for(const op of result.ops)op(ctx);ctx.restore();
   if(background){const bg=background.getContext('2d');bg.clearRect(0,0,background.width,background.height);bg.drawImage(canvas,0,0);}
   output.regions=result.regions.map(r=>moduleFrame(r,config.moduleTransforms?.[config.layout]?.[r.id]));
   output.textRegions=result.textRegions.map(r=>displayedText(r,config.textTransforms?.[config.layout]?.[r.key],result.regions.find(m=>m.id===r.moduleId),config.moduleTransforms?.[config.layout]?.[r.moduleId]));

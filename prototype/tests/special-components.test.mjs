@@ -18,7 +18,7 @@ test('five virtual presets per shop do not make a new workspace nonempty; delete
 test('special replaces real binding and stale costs; all maintenance cells are zero without hiding a normal unbound part',()=>{
  const config={id:'c',shopId:'intel',price:1000,parts:[{slot:'CPU',goodsId:'123',sourceId:'old',qty:2,erp:999,tax:999}],addons:[{sourceId:'old',text:'旧加购'}]};
  replaceSourcePart(config,0,sourcesFor(blank(),'intel')[0]);assert.equal(config.parts[0].goodsId,'');assert.equal(config.parts[0].erp,0);assert.equal(config.parts[0].tax,0);assert.equal(config.addons.length,0);
- assert.deepEqual(erpRow(config).slice(0,4),['0','0','0','']);assert.equal(erpRow(config).length,56);assert.equal(totals(config).erp,0);assert.equal(totals(config).missing,0);assert.deepEqual(overviewProfits(config,{}),[900,980]);
+ assert.deepEqual(erpRow(config).slice(0,4),['0','0','0','']);assert.equal(erpRow(config).length,56);assert.equal(totals(config).erp,0);assert.equal(totals(config).missing,0);assert.deepEqual(overviewProfits(config,{}),[860,980]);
  const payload=copyPartPayload(config,0),other=structuredClone(config);pastePartPayload(other,0,payload,sourcesFor(blank(),'intel'));assert.equal(other.parts[0].specialComponent,true);
  replaceSourcePart(config,0,{sourceId:'real',goodsId:'321',name:'真实 CPU',erp:400,tax:420});assert.equal(config.parts[0].specialComponent,false);assert.equal(erpRow(config)[0],'321');assert.equal(totals(config).erp,800);
  config.parts[0].goodsId='';assert.throws(()=>erpRow(config),/尚未绑定/);

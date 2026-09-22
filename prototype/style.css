@@ -131,13 +131,16 @@ dialog.inventory-dialog{width:min(1060px,96vw)}
 .gallery-note{flex:none;margin:10px 0 14px}.gallery-layout{display:grid;grid-template-columns:180px minmax(240px,1fr) 260px;gap:16px;flex:1;min-height:0}
 #gallery-tree{overflow:auto;border-right:1px solid var(--line);padding-right:10px;overscroll-behavior:contain}
 #gallery-tree button{width:100%;white-space:normal;text-align:left;border:0;background:none;font-size:12px;padding:8px 6px;border-radius:6px}
-#gallery-tree button.active{background:#eaf3ff;color:#0068e8;font-weight:700}#gallery-tree details details{margin-left:10px}
+#gallery-tree button.active{background:none;color:#0068e8;font-weight:700}#gallery-tree details details{margin-left:10px}
+#dialog-body #gallery-tree summary,#dialog-body #gallery-tree details[open]>summary,#dialog-body #gallery-tree summary:hover{border:0;border-radius:0;background:none;padding:0;color:inherit;box-shadow:none}
+#dialog-body #gallery-tree summary::after{content:none}
+#gallery-tree button:hover{background:none;color:#0068e8}
 #gallery-tree summary{display:flex;align-items:center;cursor:pointer}#gallery-tree summary::before{content:'›';width:10px;flex:none;color:#7d8ba0}#gallery-tree details[open]>summary::before{content:'⌄'}
 .gallery-results{display:flex;flex-direction:column;min-height:0;min-width:0}#gallery-count{font-size:12px;color:#64768e;padding:0 0 12px;flex:none}
-#gallery-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:12px;overflow:auto;align-content:start;padding:2px 5px 12px 2px;overscroll-behavior:contain}
-.gallery-card{border:1px solid var(--line);border-radius:10px;overflow:hidden;background:white;min-width:0}.gallery-card.selected{border-color:#0068e8;box-shadow:0 0 0 1px #0068e8}
-.gallery-card-open{border:0;border-radius:0;display:grid;gap:8px;padding:12px;width:100%;text-align:left;white-space:normal}.gallery-card-open img{width:100%;height:150px;object-fit:contain;background:#f5f7fa;border-radius:6px}
-.gallery-card-open strong{font-size:13px;overflow-wrap:anywhere}.gallery-card-open small{font-size:11px;line-height:1.6;color:#71849c;overflow-wrap:anywhere}.gallery-card-footer{display:flex;gap:6px;align-items:center;justify-content:space-between;padding:0 12px 12px;font-size:11px;color:#71849c}.gallery-card-footer button{padding:5px 7px;font-size:11px}
+#gallery-grid{display:grid;flex:1;min-height:0;grid-auto-rows:max-content;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:12px;overflow:auto;align-content:start;padding:2px 5px 12px 2px;overscroll-behavior:contain}
+.gallery-card{display:flex;flex-direction:column;height:auto;min-height:max-content;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:white;min-width:0}.gallery-card.selected{border-color:#0068e8;box-shadow:0 0 0 1px #0068e8}
+.gallery-card-open{flex:none;border:0;border-radius:0;display:grid;gap:8px;padding:12px;width:100%;text-align:left;white-space:normal}.gallery-card-open img{width:100%;height:150px;object-fit:contain;background:#f5f7fa;border-radius:6px}
+.gallery-card-open strong{font-size:13px;overflow-wrap:anywhere}.gallery-card-open small{font-size:11px;line-height:1.6;color:#71849c;overflow-wrap:anywhere}.gallery-card-footer{display:flex;flex:none;flex-wrap:wrap;margin-top:auto;gap:6px;align-items:center;justify-content:space-between;padding:0 12px 12px;font-size:11px;color:#71849c}.gallery-card-footer button{padding:5px 7px;font-size:11px}
 #gallery-detail{overflow:auto;border-left:1px solid var(--line);padding:0 4px 12px 16px;overscroll-behavior:contain}#gallery-detail h3{font-size:15px;margin:12px 0;overflow-wrap:anywhere}#gallery-detail .field{margin-bottom:12px}
 .gallery-detail-image{width:100%;height:180px;object-fit:contain;background:#f5f7fa;border:1px solid var(--line);border-radius:8px;margin:8px 0}.gallery-path{color:#64768e;line-height:1.7;overflow-wrap:anywhere}
 .gallery-detail-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px}.gallery-detail-actions button{font-size:12px}.gallery-empty{padding:25px 10px;color:#71849c;line-height:1.8;grid-column:1/-1}.gallery-empty strong{color:#314965;font-size:14px}
@@ -199,3 +202,16 @@ body.login-required > :not(#login-screen){display:none!important}
 /* Text frames resize without scaling their glyphs. Image/module corners retain scaling. */
 #poster-selection .poster-side-handle{display:none}#poster-selection.text-selection .poster-side-handle{display:block}
 #poster-selection [data-resize="n"]{left:50%;top:0;transform:translate(-50%,-50%);cursor:ns-resize}#poster-selection [data-resize="s"]{left:50%;top:100%;transform:translate(-50%,-50%);cursor:ns-resize}#poster-selection [data-resize="w"]{left:0;top:50%;transform:translate(-50%,-50%);cursor:ew-resize}#poster-selection [data-resize="e"]{left:100%;top:50%;transform:translate(-50%,-50%);cursor:ew-resize}
+
+/* Configuration rows use the same inline search as source maintenance. */
+.part-head,.part-row{grid-template-columns:44px minmax(130px,1fr) 52px 48px 28px}
+.part-model .product-search{margin:8px 0}.part-model .product-search .field{font-size:11px}.part-model .product-picked:empty{display:none}.part-model .product-results:empty{margin:0}.part-model .product-picked{display:none}.part-model .product-result{padding:8px 10px}.part-model .product-result strong{font-size:12px;overflow-wrap:anywhere}
+@container(max-width:460px){.part-row{grid-template-columns:36px minmax(0,1fr) 50px 42px 24px;gap:8px}.part-model{grid-column:2 / -1}.part-row [data-qty]{grid-column:3;grid-row:2}.part-row .poster-part-toggle{grid-column:4;grid-row:2}.part-row [data-remove-part]{grid-column:5;grid-row:2}}
+
+.part-model [data-part-search]{position:relative;margin:0}
+.part-model [data-part-search]>.product-results{position:absolute;left:0;right:0;top:100%;z-index:30;max-height:260px;margin:4px 0 0;padding:6px;border:1px solid var(--line,#dce5f2);border-radius:8px;background:var(--panel,#fff);box-shadow:0 6px 18px #16345626}
+.part-model [data-part-search]>.product-results:empty{display:none}
+.part-model [data-part-search]>[data-product-count]{display:none}
+.part-model [data-part-name]{width:100%;font-size:12px;padding:8px 10px}
+
+.part-model [data-part-name]{text-align:left}.part-model .product-result{color:var(--text,#132b50)}

@@ -1,0 +1,75 @@
+{
+  "schema_version": 1,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "DIY 配置工具：从三处重复维护到一套数据贯通",
+    "subtitle": "配置录入、配件维护、成本核算、配置图与主机维护表统一协作流程",
+    "animation": "none",
+    "visual_preset": "editorial",
+    "quality_profile": "showcase",
+    "viewBox": [1120, 980]
+  },
+  "lanes": [
+    { "id": "legacy", "label": "以前：三处分别维护", "variant": "exception" },
+    { "id": "workbench", "label": "现在：配置工具统一维护" },
+    { "id": "outputs", "label": "输出与后续使用" }
+  ],
+  "phases": [
+    { "id": "prepare", "label": "建立与维护", "fromCol": 0, "toCol": 2 },
+    { "id": "check", "label": "核对与批量处理", "fromCol": 3, "toCol": 4, "variant": "emphasis" },
+    { "id": "deliver", "label": "输出", "fromCol": 5, "toCol": 5, "variant": "dashed" }
+  ],
+  "mainPath": ["create", "component", "verify", "poster"],
+  "nodes": [
+    { "id": "wps", "lane": "legacy", "col": 0, "type": "external", "label": "WPS 写配置", "sublabel": "名称、数量、版本" },
+    { "id": "canva", "lane": "legacy", "col": 2, "type": "external", "label": "Canva 做配置图", "sublabel": "再次整理文字与排版" },
+    { "id": "manual", "lane": "legacy", "col": 5, "type": "external", "label": "搬到维护表", "sublabel": "重复核对 ID、数量、价格" },
+
+    { "id": "create", "lane": "workbench", "col": 0, "type": "frontend", "label": "建立配置", "sublabel": "新建、复制、模板、粘贴" },
+    { "id": "component", "lane": "workbench", "col": 2, "type": "database", "label": "选择与维护配件", "sublabel": "ERP ID · 双清单" },
+    { "id": "verify", "lane": "workbench", "col": 4, "type": "backend", "label": "核对与批量处理", "sublabel": "核算 · 库存 · 换件" },
+
+    { "id": "poster", "lane": "outputs", "col": 5, "type": "frontend", "label": "配置图与 SKU", "sublabel": "预览、排版、批量导出" },
+    { "id": "table", "lane": "outputs", "col": 4, "type": "database", "label": "主机维护表数据", "sublabel": "ID、数量、简称、定价" }
+  ],
+  "edges": [
+    { "id": "old-wps-canva", "from": "wps", "to": "canva", "label": "重复录入", "variant": "security", "role": "error" },
+    { "id": "old-canva-table", "from": "canva", "to": "manual", "label": "再次搬运", "variant": "security", "role": "error" },
+
+    { "id": "new-create-component", "from": "create", "to": "component", "variant": "emphasis", "role": "main" },
+    { "id": "new-component-verify", "from": "component", "to": "verify", "variant": "emphasis", "role": "main" },
+    { "id": "new-verify-poster", "from": "verify", "to": "poster", "variant": "emphasis", "role": "main" },
+    { "id": "new-verify-table", "from": "verify", "to": "table", "variant": "default", "role": "branch" }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "核心收益",
+      "items": [
+        "一套配置同时服务图片、核算与维护表",
+        "ERP ID 精确关联，减少名称错配",
+        "换件后重新检查并输出，不再三处分别修改"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "批量能力",
+      "items": [
+        "支持勾选多个链接或全选后批量换件",
+        "同步对应加购文案并一键检查差价",
+        "批量导出有变动的配置图与 SKU 图",
+        "三个店铺分别支持 8,000 套在用配置"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "仍需人工确认",
+      "items": [
+        "维护表数据仍需粘贴到原表",
+        "库存和 ERP 成本需刷新后核对",
+        "特殊图片继续使用 Canva 精修",
+        "外部已导出内容不会自动跟随更新"
+      ]
+    }
+  ]
+}

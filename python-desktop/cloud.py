@@ -245,7 +245,7 @@ class Cloud:
         if not self.s.store.get('workspace_meta', 'root'):
             return
         current = self.s.state
-        next_state = self.s.domain('initializeActualParts', self.s.domain('applyWorkspace', current, self.s.store.records()))
+        next_state = self.s.domain('initializeMaterializedState', self.s.domain('applyWorkspace', current, self.s.store.records()))
         events = self.s.domain('recentActivity', self.s.store.meta('activity') or [])
         next_state['logs'] = self.s.domain('recentActivity', [r for r in events if r.get('operator') != (self.member or {}).get('memberId')] + current.get('logs', []))
         if self.s.domain('projectWorkspace', current) == self.s.domain('projectWorkspace', next_state) and current.get('logs') == next_state['logs']:
@@ -272,7 +272,7 @@ class Cloud:
         merged = []
 
         def materialize():
-            value = self.s.domain('initializeActualParts', self.s.domain('applyWorkspace', next_state, self.s.store.records()))
+            value = self.s.domain('initializeMaterializedState', self.s.domain('applyWorkspace', next_state, self.s.store.records()))
             merged.append(value)
             return value
         self.s.store.edit_many(changes, materialize, actor=self.audit_actor())

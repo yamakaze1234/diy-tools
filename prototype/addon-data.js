@@ -9,7 +9,7 @@ export function validateAddon(a,{required=false,costs}={}){
   if(!Array.isArray(a.choices)||a.choices.length>30)throw Error('最多选择 30 个加购商品');
   const ids=new Set();for(const c of a.choices){
    if(!c||typeof c.id!=='string'||!c.id||ids.has(c.id)||typeof c.label!=='string'||typeof c.enabled!=='boolean')throw Error('加购商品信息无效或重复');ids.add(c.id);if(required&&!c.label.trim())throw Error('请填写每项加购商品的升级文案');
-   if(typeof c.goodsId!=='string'||!/^\d{1,20}$/.test(c.goodsId))throw Error('请选择每项加购的准确商品');
+   if(typeof c.goodsId!=='string'||c.goodsId!==''&&!/^\d{1,20}$/.test(c.goodsId))throw Error('请选择每项加购的准确商品');
    validateAddon(choiceAddon(c,a.sourceId),{required,costs});
   }
   return a;
@@ -26,8 +26,8 @@ export function validateAddon(a,{required=false,costs}={}){
  if(required){if(!a.text.trim())throw Error('请填写加购描述');if(addonItems(a).length&&a.priceCents==null)throw Error('请设置加购价');}
  return a;
 }
-export const choiceText=c=>`【+${c.priceCents==null?'待填':Number((c.priceCents/100).toFixed(2))}元${c.label||'升级商品'}】`;
-export const choiceAddon=(c,sourceId)=>({text:choiceText(c),goodsId:c.goodsId,qty:c.qty,priceCents:c.priceCents,originalQty:c.originalQty??c.qty,sourceId});
+export const choiceText=c=>!c.goodsId?c.label||'':`【+${c.priceCents==null?'待填':Number((c.priceCents/100).toFixed(2))}元${c.label||'升级商品'}】`;
+export const choiceAddon=(c,sourceId)=>({text:choiceText(c),goodsId:c.goodsId,qty:c.qty,priceCents:c.priceCents,originalQty:c.originalQty??1,sourceId});
 export const choiceDescription=choices=>choices.filter(c=>c.enabled).map(choiceText).join('');
 export const addonChecks=a=>a.choices!==undefined?a.choices.map(c=>choiceAddon(c,a.sourceId)):[a];
 export function addonCheck(a,costs,originals=[]){
@@ -38,7 +38,7 @@ export function addonCheck(a,costs,originals=[]){
  const candidates=originals.filter(p=>sourceId&&p.sourceId===sourceId),unique=[...new Map(candidates.map(p=>[JSON.stringify([p.goodsId,p.erp,p.tax]),p])).values()],original=unique.length===1?unique[0]:null;
  const validPrice=Number.isSafeInteger(a.priceCents)&&a.priceCents>=0;
  const total=(unit,qty)=>typeof unit==='number'&&Number.isFinite(unit)&&unit>=0&&Number.isSafeInteger(qty)&&qty>0?Math.round(unit*100)*qty:null;
- const fields=['erp','tax'].map(key=>{const amounts=items.map((item,i)=>total(rows[i]?.[key],item.qty)),cost=amounts.length&&amounts.every(v=>v!==null)?amounts.reduce((a,b)=>a+b,0):null,originalPrice=sourceId?total(original?.[key],a.originalQty??a.qty??1):0,diff=validPrice&&cost!==null&&originalPrice!==null?originalPrice+a.priceCents-cost:null;return {key,label:key==='erp'?'ERP':'核算',originalPriceCents:originalPrice,costCents:cost,diffCents:diff,severity:diff===null?'pending':diff<=-5000?'danger':diff<0?'warning':'ok'};});
+ const fields=['erp','tax'].map(key=>{const amounts=items.map((item,i)=>total(rows[i]?.[key],item.qty)),cost=amounts.length&&amounts.every(v=>v!==null)?amounts.reduce((a,b)=>a+b,0):null,originalPrice=sourceId?total(original?.[key],a.originalQty??1):0,diff=validPrice&&cost!==null&&originalPrice!==null?originalPrice+a.priceCents-cost:null;return {key,label:key==='erp'?'ERP':'核算',originalPriceCents:originalPrice,costCents:cost,diffCents:diff,severity:diff===null?'pending':diff<=-5000?'danger':diff<0?'warning':'ok'};});
  const needsAdjustment=fields.every(f=>f.severity==='danger'),tax=fields.find(f=>f.key==='tax');
  const severity=needsAdjustment?'danger':tax.severity==='danger'?'warning':tax.severity;
  return {goodsId:a.goodsId||'',name:rows.map((r,i)=>(r?.name||items[i].goodsId)+' ×'+items[i].qty).join('；'),originalName:original?.name||'',fields,severity,needsAdjustment,reason:!items.length?'仅展示描述，未设置核算商品':rows.some(r=>!r)?'商品不存在或 ID 不唯一':sourceId&&!original?'待关联原配件或原配件不唯一':!validPrice?'待设置加购价':fields.some(f=>f.originalPriceCents===null)?'待补充原配件价格':fields.some(f=>f.costCents===null)?'待补充新配件成本':''};

@@ -33,8 +33,10 @@ def create_server(service, port=0):
         def body(self):
             try:
                 length = int(self.headers.get('Content-Length', '0'))
-                if not 0 < length <= 40 * 1024 * 1024:
-                    raise AppError('请求为空或超过 40MB')
+                state_request = self.path.split('?', 1)[0] in ('/api/state', '/api/recovery-draft')
+                maximum_mb = 256 if state_request else 40
+                if not 0 < length <= maximum_mb * 1024 * 1024:
+                    raise AppError(f'请求为空或超过 {maximum_mb}MB')
                 value = json.loads(self.rfile.read(length))
                 if not isinstance(value, dict):
                     raise AppError('请求格式无效')

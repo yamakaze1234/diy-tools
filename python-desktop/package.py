@@ -17,13 +17,17 @@ def package():
     files = [exe] + sorted(p for p in (app / '_internal').rglob('*') if p.is_file())
     seed = json.loads((app / '_internal/web/seed.json').read_text(encoding='utf-8'))
     assert all(not seed[k] for k in ('configs', 'templates', 'sourceCatalog', 'costSource', 'caseGallery', 'logs'))
+    assert (app / '_internal/web/.env.local').read_bytes() == (ROOT.parent / 'prototype/.env.example').read_bytes()
     assert not any(p.suffix == '.sqlite' or p.name == 'state.json' for p in files)
     guide = app / '使用说明.txt'
     shutil.copy2(ROOT / '使用说明.txt', guide)
     files.append(guide)
+    manual = app / '使用说明书.html'
+    shutil.copy2(ROOT.parent / 'docs/DIY配置工作台-零基础完整说明书.html', manual)
+    files.append(manual)
     installer = app / 'MicrosoftEdgeWebview2Setup.exe'
     if not installer.exists():
-        candidates = list((ROOT.parent / 'release').glob('python-*/DIY配置工作台-Python-*/MicrosoftEdgeWebview2Setup.exe'))
+        candidates = list((ROOT.parent / 'release').glob('python-*/DIY配置工作台-*/MicrosoftEdgeWebview2Setup.exe'))
         if not candidates:
             raise RuntimeError('Missing Microsoft WebView2 bootstrapper')
         shutil.copy2(candidates[0], installer)
@@ -31,7 +35,7 @@ def package():
     manifest = app / 'SHA256SUMS.txt'
     manifest.write_text('\n'.join(hashlib.sha256(p.read_bytes()).hexdigest() + '  ' + p.relative_to(app).as_posix() for p in files) + '\n', encoding='utf-8')
     files.append(manifest)
-    archive = ROOT.parent / 'release' / f"DIY配置工作台-Python-{build['version']}-其他电脑使用.zip"
+    archive = ROOT.parent / 'release' / f"DIY配置工作台-v{build['version']}-其他电脑使用.zip"
     if archive.exists():
         raise RuntimeError('使用包已存在，请先保留或移入回收站后再生成。')
     with zipfile.ZipFile(archive, 'w', compression=zipfile.ZIP_DEFLATED, compresslevel=6) as z:

@@ -1,3 +1,4 @@
+import {selectedSourceAddons} from './addon-data.js';
 import {makeZip} from './zip.js';
 import {isSpecialComponent} from './special-components.js';
 
@@ -8,7 +9,7 @@ export function sourceExportRows(rows,costs,shopId){
  return rows.filter(r=>r.shopId===shopId&&!r.deletedAt).map(r=>{
   if(typeof r.goodsId==='number'&&!Number.isSafeInteger(r.goodsId))throw Error('ERP ID 已丢失数字精度，请重新绑定文本 ID 后导出');
   const id=isSpecialComponent(r)?'':String(r.goodsId??'');
-  return [id,id?(erpNames.get(id)||r.erpName||r.originalName||''):'',String(r.name??''),String(r.upgrade??'')];
+  return [id,id?(erpNames.get(id)||r.erpName||r.originalName||''):'',String(r.name??''),selectedSourceAddons(r).map(a=>a.text).join('')];
  });
 }
 export function sourceExportWorkbook(rows){

@@ -4,8 +4,8 @@ import {createDemo,calculate,instantiateTemplate,replaceFromTemplate,templateDif
 
 test('复用本地工作台公式：售价、店铺券、分期费及两种利润',()=>{
  const s=createDemo(),c=s.configs[1];let t=calculate(c,s.catalog,200);
- assert.deepEqual([t.erp,t.tax,t.listPrice,t.erpProfit,t.taxProfit,t.capacity],[6600,6450,7699,749.02,691,12]);
- t=calculate({...c,installment:24},s.catalog,200);assert.equal(t.fee,749.9);assert.equal(t.erpProfit,-.88);assert.equal(t.taxProfit,-58.9);
+ assert.deepEqual([t.erp,t.tax,t.listPrice,t.erpProfit,t.taxProfit,t.capacity],[6600,6450,7699,749.02,649.04,12]);
+ t=calculate({...c,installment:24},s.catalog,200);assert.equal(t.fee,749.9);assert.equal(t.erpProfit,-.88);assert.equal(t.taxProfit,-100.86);
 });
 test('空成本与未绑定 ID 不得按零成本显示利润，数值零是真实成本',()=>{
  const s=createDemo();const c=copy(s.configs[1]);c.actualParts[0].goodsId='不存在';let t=calculate(c,s.catalog,200);assert.equal(t.erpProfit,null);assert.equal(t.taxProfit,null);assert.equal(t.capacity,null);

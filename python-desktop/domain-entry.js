@@ -17,3 +17,10 @@ export {mergeEditingState} from '../prototype/workspace-ui-merge.js';
 
 export {initializeActualParts} from '../prototype/actual-parts.js';
 export {parseStandardProduct,standardProducts} from '../prototype/product-standard.js';
+
+import {initializeActualParts as initializeParts} from "../prototype/actual-parts.js";
+import {normalizePosterDesign} from "../prototype/poster-design.js";
+// Materialized legacy records need the same in-memory defaults as loaded records.
+export function initializeMaterializedState(state){initializeParts(state);for(const config of state.configs||[])normalizePosterDesign(config);return state;}
+
+export {validateConfigCapacity} from '../prototype/config-capacity.js';

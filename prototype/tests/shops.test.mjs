@@ -44,24 +44,24 @@ test('三店显示名称与加购隔离，核算价按 goodsId 同步共享',()=
  assert.equal(intel.parts[0].name,'英特尔展示名');
 });
 
-test('技嘉默认浅色黑橙，乔思伯默认浅色，跨店身份重置品牌与默认外观',()=>{
+test('技嘉默认浅色青色，乔思伯默认浅色，跨店身份重置品牌与默认外观',()=>{
  const gigabyte=applyShopIdentity({...structuredClone(legacyConfig),modules:[]},'gigabyte',{resetAppearance:true});
  const jonsbo=applyShopIdentity({...structuredClone(legacyConfig),modules:[]},'jonsbo',{resetAppearance:true});
- assert.equal(gigabyte.theme,'light');assert.equal(gigabyte.brandText,'GIGABYTE');
+ assert.equal(gigabyte.theme,'light');assert.equal(gigabyte.brandText,'AORUS');
  assert.deepEqual(gigabyte.palette,shopPalette('gigabyte','light'));
- assert.equal(gigabyte.palette.bg,'#fdfbf8');assert.equal(gigabyte.palette.accent,'#d64825');
+ assert.equal(gigabyte.palette.bg,'#ffffff');assert.equal(gigabyte.palette.accent,'#008d96');
  assert.equal(jonsbo.theme,'light');assert.equal(jonsbo.brandText,'JONSBO');
  assert.deepEqual(jonsbo.palette,shopPalette('jonsbo','light'));
- assert.equal(jonsbo.palette.bg,'#f2f5f9');assert.equal(jonsbo.palette.text,'#253b50');
+ assert.equal(jonsbo.palette.bg,'#ffffff');assert.equal(jonsbo.palette.text,'#202124');
 });
 
 test('技嘉和乔思伯均保留浅深两套主题，来回切换恢复对应配色',()=>{
  const gigabyte=applyShopIdentity({...structuredClone(legacyConfig),modules:[]},'gigabyte',{resetAppearance:true});
- switchShopTheme(gigabyte,'dark');assert.equal(gigabyte.palette.bg,'#101010');assert.equal(gigabyte.palette.accent,'#ff7900');
- switchShopTheme(gigabyte,'light');assert.equal(gigabyte.palette.bg,'#fdfbf8');assert.equal(gigabyte.palette.accent,'#d64825');
+ switchShopTheme(gigabyte,'dark');assert.equal(gigabyte.palette.bg,'#1e1f21');assert.equal(gigabyte.palette.accent,'#ff6400');
+ switchShopTheme(gigabyte,'light');assert.equal(gigabyte.palette.bg,'#ffffff');assert.equal(gigabyte.palette.accent,'#008d96');
  const jonsbo=applyShopIdentity({...structuredClone(legacyConfig),modules:[]},'jonsbo',{resetAppearance:true});
- switchShopTheme(jonsbo,'light');assert.equal(jonsbo.palette.bg,'#f2f5f9');assert.equal(jonsbo.palette.text,'#253b50');
- switchShopTheme(jonsbo,'dark');assert.equal(jonsbo.palette.bg,'#101c24');assert.equal(jonsbo.palette.text,'#edf5f7');
+ switchShopTheme(jonsbo,'light');assert.equal(jonsbo.palette.bg,'#ffffff');assert.equal(jonsbo.palette.text,'#202124');
+ switchShopTheme(jonsbo,'dark');assert.equal(jonsbo.palette.bg,'#222326');assert.equal(jonsbo.palette.text,'#f4f4f2');
 });
 
 test('乔思伯旧默认主题更新保留业务数据、文字格式和手工配色，重复载入稳定',()=>{
@@ -75,13 +75,35 @@ test('乔思伯旧默认主题更新保留业务数据、文字格式和手工�
  assert.deepEqual(next.configs[0].textStyles,config.textStyles);
  assert.deepEqual(next.configs[0].palette,shopPalette('jonsbo','dark'));
  assert.deepEqual(next.configs[0].themePalettes.dark,shopPalette('jonsbo','dark'));
- assert.equal(next.configs[0].upgradeColor,'#ffd477');
- assert.equal(next.configs[0].modules[0].background,'#2c4353');
+ assert.equal(next.configs[0].upgradeColor,'#ffce88');
+ assert.equal(next.configs[0].modules[0].background,'#484a50');
  for(const key of ['palette','themePalettes','upgradeColor','modules'])assert.deepEqual(next.configs[1][key],custom[key]);
  assert.deepEqual(normalizeWorkspaceState(next),next);
  switchShopTheme(next.configs[0],'light');
- assert.equal(next.configs[0].upgradeColor,'#a64116');
- assert.equal(next.configs[0].modules[0].background,'#3b5870');
+ assert.equal(next.configs[0].upgradeColor,'#97531b');
+ assert.equal(next.configs[0].modules[0].background,'#35383d');
+});
+
+test('三店旧内置深色主题迁移到新版卡片色，手工配色保持不变',()=>{
+ const old={
+  intel:{bg:'#07172e',text:'#eef5ff',accent:'#57bdff',line:'#213a59',muted:'#a3b7d0',panel:'#0e2643'},
+  gigabyte:{bg:'#292b31',text:'#f8f5f1',accent:'#ffbb80',line:'#5c5c62',muted:'#c9c2bb',panel:'#45464d'},
+  jonsbo:{bg:'#1c1d20',text:'#f1f0ed',accent:'#c9b990',line:'#505155',muted:'#aaa9a6',panel:'#34363a'}
+ };
+ const service={intel:'#173e76',gigabyte:'#65422e',jonsbo:'#414145'};
+ const configs=Object.keys(old).flatMap(shopId=>{
+  const base={...structuredClone(legacyConfig),id:shopId,shopId,theme:'dark',palette:old[shopId],themePalettes:{dark:old[shopId]},upgradeColor:old[shopId].accent,modules:[{type:'service',background:service[shopId]}]};
+  const custom=structuredClone(base);custom.id=shopId+'-custom';custom.palette.accent='#abcdef';custom.themePalettes.dark.accent='#abcdef';custom.modules[0].background='#123456';return[base,custom];
+ });
+ const next=normalizeWorkspaceState({dataVersion:3,configs,templates:[],sourceCatalog:[]});
+ for(const shopId of Object.keys(old)){
+  const migrated=next.configs.find(c=>c.id===shopId),custom=next.configs.find(c=>c.id===shopId+'-custom');
+  assert.deepEqual(migrated.palette,shopPalette(shopId,'dark'));
+  assert.deepEqual(migrated.themePalettes.dark,shopPalette(shopId,'dark'));
+  assert.notEqual(migrated.modules[0].background,service[shopId]);
+  assert.equal(custom.palette.accent,'#abcdef');assert.equal(custom.modules[0].background,'#123456');
+ }
+ assert.deepEqual(normalizeWorkspaceState(next),next);
 });
 
 
@@ -94,7 +116,7 @@ test('三店两套主题的新配置与补入服务条使用确认后的同一�
   for(const m of [direct,inserted]){assert.equal(m.background,shopServiceColor(shopId,theme));assert.equal(m.color,shopServiceTextColor(shopId,theme));assert.match(m.text,/保价双11/);}
  }
  const blank=blankConfig(null,{id:'test',name:'测试',shopId:'gigabyte'});
- assert.equal(blank.modules.find(m=>m.type==='service').background,'#3a3c40');
+ assert.equal(blank.modules.find(m=>m.type==='service').background,'#383a3e');
  const custom={id:'service',type:'service',text:'自定义承诺',background:'#123456',color:'#abcdef'};
  assert.deepEqual(posterModules({shopId:'gigabyte',theme:'dark',modules:[custom]}),[custom]);
 });

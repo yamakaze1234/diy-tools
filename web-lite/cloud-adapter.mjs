@@ -1,3 +1,4 @@
+import {refreshErpCatalog} from './erp-data.mjs';
 import {equal} from '../shared/sync/protocol.mjs';
 import {sourceAddonOptions,addonItems,choiceAddon,choiceText,selectedSourceAddons} from '../prototype/addon-data.js';
 import {actualParts} from '../prototype/actual-parts.js';
@@ -11,7 +12,7 @@ const optionsFromAddons=addons=>addons.flatMap((a,i)=>a.choices?a.choices.map(x=
 const signature=addons=>optionsFromAddons(addons).map(({id,_choice,...o})=>({...o,text:_choice?choiceText({label:o.text,priceCents:o.priceCents}):o.text}));
 export function sourceFromNative(row){
  const options=row.addonChoices!==undefined?row.addonChoices.map(c=>({...nativeOption(choiceAddon(c,row.sourceId),0),id:c.id,enabled:c.enabled,text:c.label,_choice:true})):sourceAddonOptions(row).filter(a=>a.text||addonItems(a).length).map(nativeOption);
- return {sourceId:row.sourceId,shopId:row.shopId,goodsId:row.goodsId,name:row.name||row.originalName||'',upgrade:row.upgrade||'',addons:options};
+ return {...(row.specialComponent===true?{specialComponent:true}:{}),sourceId:row.sourceId,shopId:row.shopId,goodsId:row.goodsId,name:row.name||row.originalName||'',upgrade:row.upgrade||'',addons:options};
 }
 function optionToNative(o){return {variantId:o.id,text:o._choice?choiceText({label:o.text,priceCents:o.priceCents}):o.text,note:o.note||'',priceCents:o.priceCents,items:copy(o.items),originalQty:o.originalQty,showTogether:o.enabled,mode:o.mode};}
 export function sourceToNative(source,base={}){
@@ -51,6 +52,7 @@ export function materialize(sync,previous={}){
  }}
  // Empty local links have no record until their first configuration is saved.
  for(const p of previous.products||[])if(!state.products.some(x=>x.id===p.id)&&!(previous.configs||[]).some(c=>c.productId===p.id))state.products.push(copy(p));
+ if(previous.erpSnapshot){state.erpSnapshot=copy(previous.erpSnapshot);refreshErpCatalog(state);}
  return state;
 }
 function configToNative(c,state,base={},beforeView={}){

@@ -11,7 +11,7 @@ from service import Service
 from server import start_server
 from storage_paths import storage_paths, prepare_storage
 
-VERSION = '0.3.25'
+VERSION = '1.0.3'
 
 
 def run():

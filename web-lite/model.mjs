@@ -1,11 +1,11 @@
-import {totals} from '../prototype/core.js';
+import {totals,slots as workbenchSlots} from '../prototype/core.js';
 import {pricing} from '../prototype/pricing.js';
 import {actualParts} from '../prototype/actual-parts.js';
 
 export const STORAGE_KEY='diy-web-lite-prototype-v1';
 export const copy=value=>structuredClone(value);
 export const uid=()=>crypto.randomUUID();
-export const slots=['CPU','散热','主板','内存','硬盘','显卡','电源','机箱','风扇','配件'];
+export const slots=workbenchSlots;
 export function createDemo(){
  const rows=[
  ['990001','CPU','Intel 酷睿 i5-14600KF',1500,1480,28],['990002','散热','利民 PA120 SE 双塔风冷',180,170,36],
@@ -32,7 +32,7 @@ export function hydrate(config,catalog){
  return {...copy(config),actualParts:actualParts(config).map(p=>{const row=map.get(p.goodsId);return {...copy(p),erp:p.specialComponent?0:row?.erp??null,tax:p.specialComponent?0:row?.tax??null,stockAvailable:row?.stockAvailable??null};})};
 }
 export function calculate(config,catalog,coupon=0){
- const c=hydrate(config,catalog),rows=actualParts(c).filter(p=>!p.specialComponent),nonempty=rows.length>0;
+ const c=hydrate(config,catalog),rows=actualParts(c).filter(p=>!p.specialComponent),nonempty=actualParts(c).length>0;
  const validQty=rows.every(p=>Number.isInteger(p.qty)&&p.qty>0);
  const validCost=key=>nonempty&&validQty&&rows.every(p=>p.goodsId&&Number.isFinite(p[key])&&p[key]>=0);
  const hasErp=validCost('erp'),hasTax=validCost('tax');
@@ -40,7 +40,7 @@ export function calculate(config,catalog,coupon=0){
  let p=null;try{if(validPrice)p=pricing(config,{coupon});}catch{}
  const t=totals({...c,price:validPrice?config.price:0});
  const demands=new Map();for(const row of rows)demands.set(row.goodsId,(demands.get(row.goodsId)||0)+row.qty);
- const stockKnown=nonempty&&validQty&&rows.every(row=>row.goodsId&&Number.isFinite(row.stockAvailable));
+ const stockKnown=rows.length>0&&validQty&&rows.every(row=>row.goodsId&&Number.isFinite(row.stockAvailable));
  const capacity=stockKnown?Math.min(...[...demands].map(([id,qty])=>Math.max(0,Math.floor(rows.find(r=>r.goodsId===id).stockAvailable/qty)))):null;
  const round=value=>Math.round(value*100)/100;
  return {listPrice:p?.listPrice??null,fee:p?.fee??null,erp:hasErp?t.erp:null,tax:hasTax?t.tax:null,erpProfit:hasErp&&p?round(t.erpProfit-p.fee):null,taxProfit:hasTax&&p?round(t.taxProfit-p.fee):null,capacity,missing:rows.filter(p=>!p.goodsId||p.erp===null||p.tax===null).length,validQty};
@@ -55,7 +55,7 @@ export function validateConfig(c){
 }
 export function instantiateTemplate(source,productId,name){
  const c=copy(source);Object.assign(c,{id:uid(),productId,name:name||source.name,skuId:'',spu:'',updatedAt:null});
- delete c.deletedAt;delete c.deletionSessionId;
+ delete c.deletedAt;delete c.deletionSessionId;delete c.workspaceOrder;delete c.wpsImport;delete c.emptyLinkDraft;
  for(const key of ['parts','actualParts'])if(Array.isArray(c[key]))c[key]=c[key].map(p=>({...p,lineId:uid()}));
  return c;
 }

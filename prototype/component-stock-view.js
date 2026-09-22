@@ -9,3 +9,9 @@ export function componentStockView(part,costs){
  const detail=stock.value===null?stock.reason:time&&!Number.isNaN(time.getTime())?'最近同步：'+time.toLocaleString('zh-CN'):'本机最近一次 ERP 库存快照';
  return {...stock,label,detail};
 }
+
+const escStock=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+export function componentStockHtml(part,costs){
+ const stock=componentStockView(part,costs);
+ return `<small class="component-stock stock-${stock.status}" title="${escStock(stock.detail)}">${escStock(stock.label)}${stock.status==='unknown'?`<span>${escStock(stock.detail)}</span>`:''}</small>`;
+}

@@ -43,6 +43,15 @@ export function applyWorkspace(template,records){
  next.sourceCatalog.forEach(enrich);next.configs.forEach(c=>{if(!c.deletedAt)allConfigParts(c).forEach(enrich);});return next;
 }
 export function changesBetween(before,after){
+ // Saving gallery metadata does not change component/configuration records.
+ // Compare their inputs once instead of projecting and hashing every ERP row.
+ if(['configs','costSource','sourceCatalog','templates','shopSettings','sharedCostScope'].every(key=>JSON.stringify(before[key])===JSON.stringify(after[key]))&&equal(before.erpSync?.scope,after.erpSync?.scope)){
+  const galleryOnly=state=>({...state,configs:[],costSource:[],sourceCatalog:[],templates:[],shopSettings:{}});
+  const old=new Map(projectWorkspace(galleryOnly(before)).map(r=>[recordKey(r.type,r.id),r])),changes=[];
+  for(const r of projectWorkspace(galleryOnly(after))){const key=recordKey(r.type,r.id),prev=old.get(key);if(!prev||!equal(prev.data,r.data))changes.push({...r,expectedDraft:prev?.data});old.delete(key);}
+  for(const r of old.values())changes.push({...r,data:{...r.data,deletedAt:new Date().toISOString()},expectedDraft:r.data});
+  return changes;
+ }
  const old=new Map(projectWorkspace(before).map(r=>[recordKey(r.type,r.id),r])),fresh=projectWorkspace(after),changes=[];
  // Legacy records have no saved order. Do not invent one in the comparison
  // baseline: it would make an unchanged stored record appear remotely edited.

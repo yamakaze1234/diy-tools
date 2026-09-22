@@ -2,7 +2,7 @@ import {sourceSyncPlan,sourceImageEntries} from './source-sync-data.js';
 import {renderPoster} from './poster.js';
 import {makeZip} from './zip.js';
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const labels={name:'显示名称',tax:'含税核算单价',upgrade:'升级文案',addon:'加购文案'};
+const labels={name:'显示名称',tax:'含税核算单价',addon:'加购文案'};
 export function mountSourceSync(root,api){
  root.innerHTML=`<h4>更新本店全部差异配置</h4><div class="source-fields">${Object.entries(labels).map(([key,name])=>`<label><input type="checkbox" data-source-field="${key}" checked>${name}</label>`).join('')}</div><p class="hint">扫描本店所有配置与已保存输出源的差异。先保存下方配件修改，再预览全部差异。</p><div class="source-export-choice"><span>更新配置图、SKU 图并导出？</span><label><input type="radio" name="source-export" value="no" checked> 否，仅更新配置数据</label><label><input type="radio" name="source-export" value="yes"> 是，生成并导出所选配置</label></div><div class="actions"><button id="source-check">预览本店全部差异</button><button id="source-apply" class="primary" disabled>同步所选差异配置</button><button id="source-export-retry" hidden>重新保存并导出</button></div><div id="source-diff"></div><p data-source-sync-message class="hint" role="status"></p>`;
  const $=s=>root.querySelector(s);let preview=null,plan=null,busy=false,exportConfigs=null,locked=[];

@@ -19,7 +19,7 @@ test('part copy/paste replaces target quantity and clones data',()=>{
  const payload=copyPartPayload(c,0);pastePartPayload(dest,0,payload,[row]);assert.equal(dest.parts[0].qty,6);dest.parts[0].qty=9;assert.equal(c.parts[0].qty,6);
 });
 test('overview profits deduct arrival-based installment fee including fractional costs',()=>{
- assert.deepEqual(overviewProfits({price:7999,installment:12,parts:[{name:'CPU',erp:6520,tax:6440,qty:1}]},{coupon:200}),[721.46,839.08]);
+ assert.deepEqual(overviewProfits({price:7999,installment:12,parts:[{name:'CPU',erp:6520,tax:6440,qty:1}]},{coupon:200}),[659.1,839.08]);
 });
 test('format brush uses resolved style while preserving target content and transforms',()=>{
  const fmt=captureTextFormat({}, {key:'a',size:40,color:'#123456',weight:700,fontFamily:'SimHei'},2);

@@ -14,8 +14,8 @@ test('差价包含原配件价格，ERP 与核算分别比较，负 49.99 黄、
  r=addonCheck({...a,priceCents:6000},costs,[{...originals[0],tax:50}]);assert.deepEqual(r.fields.map(f=>f.diffCents),[0,0]);assert.equal(r.severity,'ok');
  assert.equal(addonCheck({...a,priceCents:29900},[{...costs[0],erp:995.55,tax:930}],[{...originals[0],erp:800,tax:750}]).fields[0].diffCents,10345);
 });
-test('原、新配件按加购数量等量替换，合计加购价只加一次',()=>{
- const r=addonCheck({...addon(),sourceId:'old',qty:2},costs,originals);assert.equal(r.fields[0].originalPriceCents,8000);assert.equal(r.fields[0].diffCents,-6100);
+test('显式指定原、新配件等量替换，合计加购价只加一次',()=>{
+ const r=addonCheck({...addon(),sourceId:'old',qty:2,originalQty:2},costs,originals);assert.equal(r.fields[0].originalPriceCents,8000);assert.equal(r.fields[0].diffCents,-6100);
  assert.equal(addonCheck({...addon(),sourceId:'old'},costs,[{...originals[0],qty:4}]).fields[0].diffCents,-100);
 });
 test('缺少原配件、新配件成本或关联不按零计算，明确零价格有效',()=>{

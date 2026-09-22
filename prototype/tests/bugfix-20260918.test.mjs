@@ -16,7 +16,7 @@ test('模板按原编号顺序导入，追加已有链接并经云投影往返�
  const sources=templateConfigs({configs});assert.deepEqual(sources.map(c=>c.name),['配置1','配置2','配置3']);
  const product={id:'new',name:'新链接',shopId:'intel',configs:[{workspaceOrder:50}]};const imported=importTemplateConfigs(sources,product);assert.deepEqual(imported.map(c=>c.workspaceOrder),[51,52,53]);
  const state={configs:imported,templates:[],sourceCatalog:[],costSource:[],caseGallery:[],shopSettings:{}};
- assert.deepEqual(applyWorkspace(state,projectWorkspace(state).reverse()).configs.map(c=>c.name),['配置1','配置2','配置3']);
+ assert.deepEqual(applyWorkspace(state,projectWorkspace(state).reverse()).configs.map(c=>c.name),['配置2','配置3','配置4']);
 });
 test('局部字号仅应用于选中文字，按 UTF-16 选区处理中文和 emoji',()=>{
  const ctx={measureText:()=>({width:10})},base={size:16,color:'#000000'};

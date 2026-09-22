@@ -19,3 +19,24 @@ test('缺少真实商品或独立价格阻止保存，未知成本不作零',()=
 test('多人同步投影与本机字段往返保留多个商品对应价格',()=>{
  const r=source(),s={configs:[],sourceCatalog:[r],templates:[],caseGallery:[],costSource:costs,shopSettings:{}};assert.deepEqual(sourceAddonFields(sourceAddon(r)).addonChoices,choices());const restored=applyWorkspace(s,projectWorkspace(s));assert.deepEqual(restored.sourceCatalog[0].addonChoices,choices());
 });
+
+test('内存一根升级两根默认只抵扣一根原件，显式替换数量独立保存',()=>{
+ const row={sourceId:'ram',goodsId:'250682',erp:750,tax:750};
+ const choice={id:'ram-up',goodsId:'250682',qty:2,priceCents:79900,label:'升级32G 16G×2',enabled:true};
+ const check=c=>addonCheck({text:'升级',sourceId:'ram',choices:[c]},[row],[row]).checks[0];
+ for(const f of check(choice).fields){assert.equal(f.originalPriceCents,75000);assert.equal(f.costCents,150000);assert.equal(f.diffCents,4900);}
+ for(const f of check({...choice,originalQty:2}).fields){assert.equal(f.originalPriceCents,150000);assert.equal(f.diffCents,79900);}
+ const direct=addonCheck({text:'升级',sourceId:'ram',goodsId:'250682',qty:2,priceCents:79900},[row],[row]);
+ assert.equal(direct.fields[0].originalPriceCents,75000);
+ const a={text:'升级',sourceId:'ram',choices:[{...choice,originalQty:1}]};
+ assert.equal(sourceAddon(sourceAddonFields(a)).choices[0].originalQty,1);
+ assert.throws(()=>validateAddon({...a,choices:[{...choice,originalQty:0}]},{required:true,costs:[row]}),/原配件数量/);
+});
+
+test('纯文字加购无需商品和价格，投影往返及配件选用保留原文',()=>{
+ const r=source();r.addonChoices=[{id:'text',goodsId:'',qty:1,label:'【联系客服升级】',enabled:true,priceCents:null}];r.addonText=choiceDescription(r.addonChoices);
+ assert.equal(r.addonText,'【联系客服升级】');validateAddon(sourceAddon(r),{required:true,costs});
+ const state={configs:[],sourceCatalog:[r],templates:[],caseGallery:[],costSource:costs,shopSettings:{}};
+ assert.deepEqual(applyWorkspace(state,projectWorkspace(state)).sourceCatalog[0].addonChoices,r.addonChoices);
+ const c={parts:[{}],addons:[]};replaceSourcePart(c,0,r);assert.equal(c.addons[0].text,r.addonText);
+});

@@ -99,7 +99,7 @@ export function bindPosterEditor(api){
   if(!origin?.parent||origin.isLogo)return;freezeLayout();const c=api.current(),parent=origin.parent,baseModule=origin.moduleOrigin;
   const width=clamp(value.width,20,result.base),height=clamp(value.height,12,result.height),x=clamp(value.x,0,result.base-width),top=clamp(value.top,0,result.height-height);
   c.textTransforms??={};c.textTransforms[c.layout]??={};
-  c.textTransforms[c.layout][selected]={...c.textTransforms[c.layout][selected],x:baseModule.x+(x-parent.x)/parent.sx,y:baseModule.top+(top-parent.top)/parent.sy,scaleX:origin.local.scaleX,scaleY:origin.local.scaleY,boxWidth:width/parent.sx/origin.local.scaleX,boxHeight:height/parent.sy/origin.local.scaleY};
+  c.textTransforms[c.layout][selected]={...c.textTransforms[c.layout][selected],x:baseModule.x+(x-parent.x)/parent.sx,y:baseModule.top+(top-parent.top)/parent.sy,scaleX:origin.local.scaleX,scaleY:origin.local.scaleY,autoFit:true,boxWidth:width/parent.sx/origin.local.scaleX,boxHeight:height/parent.sy/origin.local.scaleY};
   api.changed('调整文本框大小与换行');
  }
  $('#poster-undo').onclick=()=>$('#undo').click();$('#poster-redo').onclick=()=>$('#redo').click();

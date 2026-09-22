@@ -1,3 +1,4 @@
+import {validateConfigCapacity} from './config-capacity.js';
 import {recentActivity,activityEntry} from './activity.js';
 import {VersionHistory} from './version-history.mjs';
 import {createSqlRoutes} from './sql-sync.mjs';
@@ -29,7 +30,7 @@ const session={id:crypto.randomUUID(),startedAt:new Date().toISOString(),default
 const actor=value=>String(value||session.defaultOperator).trim().slice(0,60)||session.defaultOperator;
 let queue=Promise.resolve();
 const json=(res,status,data)=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});res.end(JSON.stringify(data));};
-async function body(req){let size=0,buf=[];for await(const chunk of req){size+=chunk.length;if(size>40*1024*1024)throw Error('文件过大（最大 40MB）');buf.push(chunk);}return JSON.parse(Buffer.concat(buf).toString());}
+async function body(req){const maximumMb=['/api/state','/api/recovery-draft'].includes(req.url.split('?')[0])?256:40;let size=0,buf=[];for await(const chunk of req){size+=chunk.length;if(size>maximumMb*1024*1024)throw Error(`文件过大（最大 ${maximumMb}MB）`);buf.push(chunk);}return JSON.parse(Buffer.concat(buf).toString());}
 async function atomic(file,data){const tmp=file+'.tmp';await fs.writeFile(tmp,data);await fs.rename(tmp,file);}
 const history=new VersionHistory(path.join(local,'versions.sqlite'));
 const historyScope=()=>workspaceSync.store.meta('workspaceId')||'local';
@@ -88,7 +89,8 @@ const server=http.createServer(async(req,res)=>{
    queue=queue.catch(()=>{}).then(async()=>{
     workspaceSync.requireLogin(req);
     if(incoming.baseRevision!==state.revision&&!(workspaceSync.enabled()&&incoming.baseState))return json(res,409,{error:'其他页面已经保存更新，请先下载当前草稿，再重新载入。',revision:state.revision});
-    if(!Array.isArray(incoming.configs)||(!incoming.configs.length&&state.configs.length>0)||incoming.configs.length>500||!Array.isArray(incoming.templates))return json(res,400,{error:'配置数据格式不正确'});
+    if(!Array.isArray(incoming.configs)||(!incoming.configs.length&&state.configs.length>0)||!Array.isArray(incoming.templates))return json(res,400,{error:'配置数据格式不正确'});
+    validateConfigCapacity(incoming.configs);
     if(incoming.caseGallery!==undefined){try{validateGallery(incoming.caseGallery);}catch(error){return json(res,400,{error:error.message});}}
     const shopIds=new Set(shops.map(shop=>shop.id));
     if(incoming.sourceCatalog!==undefined&&(!Array.isArray(incoming.sourceCatalog)||incoming.sourceCatalog.length>30000||incoming.sourceCatalog.some(r=>!r||typeof r.sourceId!=='string'||!shopIds.has(r.shopId)||typeof r.goodsId!=='string'||typeof r.name!=='string'||(r.tax!==null&&(!Number.isFinite(r.tax)||r.tax<0)))||new Set(incoming.sourceCatalog.map(r=>r.sourceId)).size!==incoming.sourceCatalog.length))return json(res,400,{error:'输出源格式不正确'});

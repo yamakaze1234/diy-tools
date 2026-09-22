@@ -1,10 +1,11 @@
+import {rememberImage} from './image-cache.js';
 import {galleryFields,galleryPath,filterGallery,galleryUsage} from './case-gallery-data.js';
 
 export function openCaseGallery(api,{pick=false,append=false}={}){
  const {openDialog,closeDialog,esc,toast,getRows,getConfigs,saveRows,uploadImage,useImage,operator}=api;
- openDialog(pick?(append?'从机箱图库添加图片':'选择机箱图片'):'机箱图库',`<div class="gallery-toolbar"><label class="gallery-search"><span>搜索图库</span><input id="gallery-search" type="search" placeholder="品牌、型号、颜色、版本或图片名称" aria-label="搜索机箱图片"></label><button id="gallery-trash">回收站</button><button id="gallery-new" class="primary">＋ 新增图片</button></div><p class="hint gallery-note">三店共用 · 按品牌 / 型号 / 颜色 / 版本分类${pick?(append?' · 选图后添加为独立图片，可拖动和缩放':' · 选图后保留当前配置的位置和大小'):''}</p><div class="gallery-layout"><nav id="gallery-tree" aria-label="机箱图片分类"></nav><section class="gallery-results"><div id="gallery-count" role="status"></div><div id="gallery-grid"></div></section><aside id="gallery-detail"></aside></div><p id="gallery-status" class="hint" role="status"></p>`);
+ openDialog(pick?(append?'从机箱图库添加图片':'选择机箱图片'):'机箱图库',`<div class="gallery-toolbar"><label class="gallery-search"><span>搜索图库</span><input id="gallery-search" type="search" placeholder="品牌、型号、颜色、版本或图片名称" aria-label="搜索机箱图片"></label><button id="gallery-trash">回收站</button><button id="gallery-new" class="primary">＋ 新增图片</button></div><p class="hint gallery-note">三店共用 · 按品牌 / 型号 / 颜色 / 版本分类${pick?(append?' · 选图后添加为独立图片，可拖动和缩放':' · 选图后保留当前配置的位置和大小'):''}</p><div class="gallery-layout"><nav id="gallery-tree" aria-label="机箱图片分类"></nav><section class="gallery-results"><div id="gallery-count" role="status"></div><div id="gallery-grid"></div><div class="source-pagination"><button id="gallery-prev">上一页</button><span id="gallery-page"></span><button id="gallery-next">下一页</button></div></section><aside id="gallery-detail"></aside></div><p id="gallery-status" class="hint" role="status"></p>`);
  const dialog=document.querySelector('#dialog'),root=document.querySelector('#gallery-grid'),$=selector=>dialog.querySelector(selector);
- dialog.classList.add('case-gallery-dialog');let path=[],query='',trash=false,selected=null,draft=null,file=null,previewUrl=null,busy=false;const expanded=new Set();
+ dialog.classList.add('case-gallery-dialog');let page=0;const pageSize=36;let path=[],query='',trash=false,selected=null,draft=null,file=null,previewUrl=null,busy=false;const expanded=new Set();
  const controller=new AbortController();
  const release=()=>{if(previewUrl){URL.revokeObjectURL(previewUrl);previewUrl=null;}};
  dialog.addEventListener('cancel',event=>{if(busy)event.preventDefault();},{signal:controller.signal});
@@ -12,27 +13,28 @@ export function openCaseGallery(api,{pick=false,append=false}={}){
  const live=()=>root.isConnected&&dialog.open;
  const report=message=>{if(live())$('#gallery-status').textContent=message;};
  const lock=value=>{busy=value;if(live())dialog.querySelectorAll('button,input,select').forEach(el=>el.disabled=value);};
- const run=async action=>{if(busy)return;lock(true);try{await action();}catch(error){report(error.message);toast(error.message);}finally{busy=false;dialog.querySelector('.close').disabled=false;if(live())lock(false);}};
+ const run=async action=>{if(busy)return;lock(true);try{await new Promise(resolve=>requestAnimationFrame(()=>setTimeout(resolve,0)));await action();}catch(error){report(error.message);toast(error.message);}finally{busy=false;dialog.querySelector('.close').disabled=false;if(live())lock(false);}};
  const resetDraft=()=>{release();draft=null;file=null;};
  const getSelected=()=>getRows().find(row=>row.id===selected);
  function renderTree(){
   const rows=filterGallery(getRows(),{query,deleted:trash}),tree=$('#gallery-tree');tree.replaceChildren();
-  const all=document.createElement('button');all.textContent=`${trash?'全部回收图片':'全部图片'} · ${rows.length}`;all.className=path.length?'':'active';all.onclick=()=>{path=[];render();};tree.append(all);
+  const all=document.createElement('button');all.textContent=`${trash?'全部回收图片':'全部图片'} · ${rows.length}`;all.className=path.length?'':'active';all.onclick=()=>{path=[];page=0;render();};tree.append(all);
   function branch(parent,items,depth,ancestors){
    if(depth===4)return;const groups=new Map();for(const row of items){const value=galleryPath(row)[depth];if(!groups.has(value))groups.set(value,[]);groups.get(value).push(row);}
    for(const [label,children] of [...groups].sort(([a],[b])=>a.localeCompare(b,'zh-CN'))){
-    const next=[...ancestors,label],key=JSON.stringify(next),details=document.createElement('details'),summary=document.createElement('summary'),button=document.createElement('button');details.open=expanded.has(key)||next.every((part,i)=>path[i]===part);details.ontoggle=()=>details.open?expanded.add(key):expanded.delete(key);
-    button.textContent=`${label} · ${children.length}`;button.classList.toggle('active',JSON.stringify(path)===key);button.onclick=()=>{path=next;render();};summary.append(button);details.append(summary);branch(details,children,depth+1,next);parent.append(details);
+    const next=[...ancestors,label],key=JSON.stringify(next),details=document.createElement('details'),summary=document.createElement('summary'),button=document.createElement('button');details.open=expanded.has(key)||next.every((part,i)=>path[i]===part);let built=false;const populate=()=>{if(!built){built=true;branch(details,children,depth+1,next);}};details.ontoggle=()=>{if(details.open){expanded.add(key);populate();}else expanded.delete(key);};
+    button.textContent=`${label} · ${children.length}`;button.classList.toggle('active',JSON.stringify(path)===key);button.onclick=()=>{path=next;page=0;render();};summary.append(button);details.append(summary);if(details.open)populate();parent.append(details);
    }
   }branch(tree,rows,0,[]);
  }
  function renderGrid(){
   const usage=new Map();for(const c of getConfigs())if(!c.deletedAt)usage.set(c.caseImage,(usage.get(c.caseImage)||0)+1);const rows=filterGallery(getRows(),{query,path,deleted:trash});$('#gallery-count').textContent=`${path.length?path.join(' / '):trash?'回收站':'全部机箱图片'} · ${rows.length} 张`;
-  root.innerHTML=rows.length?rows.map(row=>`<article class="gallery-card ${selected===row.id?'selected':''}"><button class="gallery-card-open" data-gallery-open="${esc(row.id)}" aria-label="查看 ${esc(row.name)}"><img src="${esc(row.url)}" alt="${esc(row.name)}" loading="lazy" decoding="async"><strong>${esc(row.name)}</strong><small>${esc(galleryPath(row).join(' / '))}</small></button><div class="gallery-card-footer"><span>${(usage.get(row.url)||0)} 套配置使用</span>${pick&&!trash?`<button class="primary" data-gallery-use="${esc(row.id)}">使用图片</button>`:''}</div></article>`).join(''):`<div class="gallery-empty"><strong>${query?'没有找到匹配图片':trash?'回收站为空':'这个分类还没有图片'}</strong><p>${query?'试试其他型号、颜色或版本关键词。':'点击右上角“新增图片”，上传后供三店选用。'}</p></div>`;
+  const pages=Math.max(1,Math.ceil(rows.length/pageSize));page=Math.max(0,Math.min(page,pages-1));$('#gallery-page').textContent=`${page+1} / ${pages}`;$('#gallery-prev').disabled=page===0;$('#gallery-next').disabled=page===pages-1;
+  root.innerHTML=rows.length?rows.slice(page*pageSize,(page+1)*pageSize).map(row=>`<article class="gallery-card ${selected===row.id?'selected':''}"><button class="gallery-card-open" data-gallery-open="${esc(row.id)}" aria-label="查看 ${esc(row.name)}"><img src="${esc(row.url)}" alt="${esc(row.name)}" loading="lazy" decoding="async"><strong>${esc(row.name)}</strong><small>${esc(galleryPath(row).join(' / '))}</small></button><div class="gallery-card-footer"><span>${(usage.get(row.url)||0)} 套配置使用</span>${pick&&!trash?`<button class="primary" data-gallery-use="${esc(row.id)}">使用图片</button>`:''}</div></article>`).join(''):`<div class="gallery-empty"><strong>${query?'没有找到匹配图片':trash?'回收站为空':'这个分类还没有图片'}</strong><p>${query?'试试其他型号、颜色或版本关键词。':'点击右上角“新增图片”，上传后供三店选用。'}</p></div>`;
   root.querySelectorAll('[data-gallery-open]').forEach(button=>button.onclick=()=>{resetDraft();selected=button.dataset.galleryOpen;root.querySelectorAll(".gallery-card").forEach(card=>card.classList.toggle("selected",card.querySelector("[data-gallery-open]").dataset.galleryOpen===selected));renderDetail();});
   root.querySelectorAll('[data-gallery-use]').forEach(button=>button.onclick=()=>choose(button.dataset.galleryUse));
  }
- async function choose(id){await run(async()=>{const row=getRows().find(item=>item.id===id);if(!row||row.deletedAt)throw Error('图片已删除，请重新选择');await useImage(row);if(live())closeDialog();toast(append?'图片已添加，可拖动和缩放':'机箱图已更换，原位置和大小已保留');});}
+ async function choose(id){await run(async()=>{const row=getRows().find(item=>item.id===id);if(!row||row.deletedAt)throw Error('图片已删除，请重新选择');const card=[...root.querySelectorAll('[data-gallery-open]')].find(button=>button.dataset.galleryOpen===id),image=card?.querySelector('img');if(image)rememberImage(row.url,image);report('正在更换图片…');await useImage(row);if(live())closeDialog();toast(append?'图片已添加，可拖动和缩放':'机箱图已更换，原位置和大小已保留');});}
  function renderDetail(){
   const pane=$('#gallery-detail'),row=getSelected();
   if(draft){
@@ -43,9 +45,10 @@ export function openCaseGallery(api,{pick=false,append=false}={}){
     const name=$('#gallery-name').value.trim(),metadata=Object.fromEntries([...pane.querySelectorAll('[data-gallery-field]')].map(input=>[input.dataset.galleryField,input.value.trim()]));
     if(!name)throw Error('请填写图片名称');if(!metadata.brand||!metadata.model||!metadata.color||!metadata.edition)throw Error('请填写品牌、型号、颜色和版本；无区分的版本可填“通用”');
     if(!draft.id&&!file)throw Error('请选择一张机箱图片');
+    report(draft.id?'正在保存图片资料…':'正在读取并保存图片…');
     const editing=!!draft.id,url=draft.url||await uploadImage(file),at=new Date().toISOString(),entry={...draft,...metadata,id:draft.id||crypto.randomUUID(),name,url,createdAt:draft.createdAt||at,updatedAt:at,operator:operator()};
     const next=structuredClone(getRows()),index=next.findIndex(r=>r.id===entry.id);if(index<0)next.push(entry);else next[index]=entry;
-    draft=entry;await saveRows(next,`${editing?'编辑':'新增'}机箱图库图片：${name}`);if(!live())return;resetDraft();selected=entry.id;trash=false;query='';$('#gallery-search').value='';path=galleryPath(entry);render();report('图片已保存，可在更换机箱图时搜索选用。');
+    draft=entry;await saveRows(next,`${editing?'编辑':'新增'}机箱图库图片：${name}`);if(!live())return;resetDraft();selected=entry.id;trash=false;query='';$('#gallery-search').value='';path=galleryPath(entry);page=0;render();report('图片已保存，可在更换机箱图时搜索选用。');
    });return;
   }
   if(!row){pane.innerHTML='<div class="gallery-empty"><strong>图片资料</strong><p>点击图片查看分类和使用情况，或新增机箱图片。</p></div>';return;}
@@ -57,8 +60,9 @@ export function openCaseGallery(api,{pick=false,append=false}={}){
   if($('#gallery-delete'))$('#gallery-delete').onclick=()=>{$('#gallery-delete-confirm').innerHTML=`<div class="gallery-confirm"><strong>将这张图片移入回收站？</strong><p>已有配置和模板仍保留原图，可随时恢复。</p><button id="gallery-delete-yes" class="danger">确认移入回收站</button><button id="gallery-delete-no">取消</button></div>`;$('#gallery-delete-yes').onclick=()=>setDeleted(true);$('#gallery-delete-no').onclick=()=>$('#gallery-delete-confirm').replaceChildren();};
  }
  function render(){if(!live())return;if(draft&&$('#gallery-name')){draft.name=$('#gallery-name').value;for(const input of dialog.querySelectorAll('[data-gallery-field]'))draft[input.dataset.galleryField]=input.value;}$('#gallery-trash').textContent=trash?'返回图库':'回收站';renderTree();renderGrid();renderDetail();}
- $('#gallery-search').oninput=event=>{query=event.target.value;path=[];renderTree();renderGrid();};
- $('#gallery-trash').onclick=()=>{resetDraft();trash=!trash;path=[];selected=null;render();};
+ $('#gallery-search').oninput=event=>{query=event.target.value;path=[];page=0;renderTree();renderGrid();};
+ $('#gallery-trash').onclick=()=>{resetDraft();trash=!trash;path=[];page=0;selected=null;render();};
  $('#gallery-new').onclick=()=>{resetDraft();selected=null;draft=Object.fromEntries(galleryFields.map((field,i)=>[field,path[i]==='待分类'?'':path[i]||'']));renderDetail();$('#gallery-name').focus();};
+ $('#gallery-prev').onclick=()=>{page--;renderGrid();};$('#gallery-next').onclick=()=>{page++;renderGrid();};
  render();$('#gallery-search').focus();
 }

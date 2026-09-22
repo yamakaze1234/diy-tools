@@ -117,8 +117,9 @@ class Service:
                 incoming = {**incoming, **{k: merged['state'][k] for k in ('configs', 'templates', 'sourceCatalog', 'costSource', 'caseGallery', 'shopSettings')}, 'baseState': state}
 
             configs, templates = incoming.get('configs'), incoming.get('templates')
-            if not isinstance(configs, list) or (not configs and state.get('configs')) or len(configs) > 500 or not isinstance(templates, list):
+            if not isinstance(configs, list) or (not configs and state.get('configs')) or not isinstance(templates, list):
                 raise AppError('配置数据格式不正确')
+            self.domain('validateConfigCapacity', configs)
             shop_ids = {'intel', 'gigabyte', 'jonsbo'}
             numeric = lambda v: type(v) in (int, float) and math.isfinite(v) and v >= 0
             if 'caseGallery' in incoming:

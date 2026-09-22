@@ -1,3 +1,4 @@
+import {configCapacityMessage} from './config-capacity.js';
 // CoreHub/pypkgs PR 13, contract pinned to b550c733a159472724cb79f99e4d6790edcac090.
 import {actualParts} from './actual-parts.js';
 import {blankConfig,clone,slots,productGroups} from './core.js';
@@ -96,7 +97,7 @@ export function planStandardProduct(input,state,product,options={}){
   rows.push({skuId,sku,existingId:existing?.id||null,parts,price,name:sku.SKU名称||existing?.name||skuId});
  }
  const added=rows.filter(r=>!r.existingId).length;
- if(state.configs.length+added>500)errors.push('导入后配置总数超过 500');
+ const capacityError=configCapacityMessage(state.configs,product.shopId,added);if(capacityError)errors.push(capacityError);
  const unchanged=configs.filter(c=>!rows.some(r=>r.existingId===c.id)).length;
  if(unchanged)warnings.push(`本链接另有 ${unchanged} 套配置未出现在结果中，将保留`);
  return {data,rows,errors,warnings,needs:[...needs.values()],bindings,added,updated:rows.length-added,options:clone(options),productId:product.id,shopId:product.shopId,baseline:JSON.stringify({configs,stateSettings:settings,catalog,costs})};

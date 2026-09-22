@@ -6,7 +6,7 @@ from datetime import datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
-VERSION = '0.3.25'
+VERSION = '1.0.3'
 
 
 def build():
@@ -15,7 +15,7 @@ def build():
     # previous user deliverable in place. Superseded stages can be recycled later.
     stamp = datetime.now().strftime('%Y%m%d-%H%M%S')
     dist = ROOT.parent / 'release' / ('python-' + VERSION + '-' + stamp)
-    name = 'DIY配置工作台-Python-' + VERSION
+    name = 'DIY配置工作台-v' + VERSION
     subprocess.run([sys.executable, '-m', 'PyInstaller', '--noconfirm', '--windowed', '--onedir', '--name', name,
         '--distpath', str(dist), '--workpath', str(ROOT / 'build' / stamp), '--specpath', str(ROOT / 'build' / stamp),
         '--icon', str(ROOT / 'web/assets/workbench-icon-v1.ico'), '--add-data', str(ROOT / 'web') + ';web',

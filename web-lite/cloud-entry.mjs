@@ -70,6 +70,13 @@ async function start(){
   accepted(){labelCache=undefined;},
   attach(value){api=value;},
   label(){if(labelCache!==undefined)return labelCache;const s=(api?api.getState():snapshot).cloudSync;const count=pending(s).length;return labelCache=s.records.some(r=>r.conflict)?'有同步冲突':s.outbox?'提交待确认':count?`待同步 ${count} 项`:'云端工作区';},
+  async inventory(action,data){
+   if(location.hostname!=='127.0.0.1')throw Error('SQL 连接只在本机运行：请启动本地连接程序并打开 http://127.0.0.1:4196/cloud.html，账号密码不会发送到静态托管站点');
+   if(sessionInvalid)throw Error('登录已失效，请重新登录');const {data:sessionData,error}=await auth.getSession();if(error)throw error;
+   if(!sessionData?.session||sessionData.session.user?.id!==member.uid)throw Error('成员登录已变化，请重新登录');
+   const response=await fetch('/api/inventory/'+action,{method:data===undefined?'GET':'POST',headers:{Authorization:'Bearer '+sessionData.session.access_token,...(data===undefined?{}:{'Content-Type':'application/json'})},...(data===undefined?{}:{body:JSON.stringify(data)}),signal:AbortSignal.timeout(action==='sql-preview'?90000:35000)});
+   let result;try{result=await response.json();}catch{throw Error('SQL 需通过本机连接程序使用，请启动本地服务并打开它提供的云端工作区地址');}if(!response.ok)throw Error(result.error||'库存服务不可用');return result;
+  },
   open(){panel();},
   actions(action,data){if(!action.startsWith('cloud-'))return false;if(action==='cloud-now'){void synchronize();return true;}if(action==='cloud-logout'){void logout();return true;}if(action==='cloud-conflict'){conflictPanel(Number(data.index));return true;}if(action==='cloud-panel'){panel();return true;}return false;}
  };

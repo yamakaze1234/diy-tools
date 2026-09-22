@@ -1,0 +1,10 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {createDemo} from '../model.mjs';
+import {validateWebSnapshot,applyErpSnapshot} from '../erp-data.mjs';
+import {materialize,stageChanges} from '../cloud-adapter.mjs';
+import {emptySync,pending} from '../cloud-sync.mjs';
+import {fakeCloud,member} from './cloud-fixture.mjs';
+const snapshot=rows=>({format:'diy-erp-snapshot-v1',origin:'https://cqzs.3cerp.com',account:'测试成员',warehouse:'公司大库',depotId:'1',costField:'erp',costHeader:'成本单价',capturedAt:new Date().toISOString(),complete:true,total:rows.length,rows});
+test('ERP 快照完整校验，空值及未匹配不变成零，人工价与配置保持不变',()=>{const s=createDemo(),tax=s.catalog[0].tax,configs=structuredClone(s.configs);applyErpSnapshot(s,snapshot([{goodsId:s.catalog[0].goodsId,name:'ERP 商品',erp:99,stockAvailable:0}]));assert.equal(s.catalog[0].erp,99);assert.equal(s.catalog[0].tax,tax);assert.equal(s.catalog[0].stockAvailable,0);assert.equal(s.catalog[1].stockAvailable,null);assert.equal(s.catalog[1].erp,null);assert.deepEqual(s.configs,configs);const old=JSON.stringify(s);assert.throws(()=>applyErpSnapshot(s,{...snapshot([]),complete:false}));assert.equal(JSON.stringify(s),old);assert.throws(()=>validateWebSnapshot(snapshot([{goodsId:'1',name:'x',erp:1,stockAvailable:1},{goodsId:'1',name:'x',erp:1,stockAvailable:1}])));});
+test('云端重建保留本浏览器快照，不进入待同步记录',()=>{const fake=fakeCloud(),sync=emptySync(member);sync.records=[...fake.records.values()].map(r=>({type:r.type,id:r.id,base:r.data,draft:structuredClone(r.data),version:r.version,conflict:null}));const before=materialize(sync),next=structuredClone(before);applyErpSnapshot(next,snapshot([{goodsId:'123',name:'真实商品',erp:430,stockAvailable:15}]));stageChanges(before,next);assert.equal(pending(next.cloudSync).length,0);const result=materialize(next.cloudSync,next);assert.equal(result.catalog.find(p=>p.goodsId==='123').stockAvailable,15);assert.equal(result.catalog.find(p=>p.goodsId==='123').erp,430);assert.equal(materialize(next.cloudSync).catalog.find(p=>p.goodsId==='123').erp,null);});

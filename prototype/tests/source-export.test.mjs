@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {sourceExportRows,sourceExportHeaders,sourceExportWorkbook} from '../source-export.js';
 
 test('输出源四列导出按店铺与在用状态筛选，ERP 名称只按精确 ID 取值',()=>{
- const rows=[{shopId:'intel',goodsId:'00123456789012345678',erpName:'缓存名',name:'展示名',upgrade:'升级一\n升级二'},{shopId:'intel',goodsId:'2',erpName:'ERP 缓存',name:'显示2'},{shopId:'intel',goodsId:'3',name:'已删除',deletedAt:'now'},{shopId:'gigabyte',goodsId:'4',name:'其他店'},{shopId:'intel',specialComponent:true,goodsId:'0',name:'不含显卡'}];
+ const rows=[{shopId:'intel',goodsId:'00123456789012345678',erpName:'缓存名',name:'展示名',upgrade:'旧升级文案',addonText:'升级一\n升级二'},{shopId:'intel',goodsId:'2',erpName:'ERP 缓存',name:'显示2'},{shopId:'intel',goodsId:'3',name:'已删除',deletedAt:'now'},{shopId:'gigabyte',goodsId:'4',name:'其他店'},{shopId:'intel',specialComponent:true,goodsId:'0',name:'不含显卡'}];
  const before=structuredClone(rows),values=sourceExportRows(rows,[{goodsId:'00123456789012345678',name:'真实 ERP 名称'}],'intel');
  assert.deepEqual(values,[['00123456789012345678','真实 ERP 名称','展示名','升级一\n升级二'],['2','ERP 缓存','显示2',''],['','','不含显卡','']]);assert.deepEqual(rows,before);assert.equal(sourceExportHeaders.length,4);
 });
@@ -16,3 +16,8 @@ test('不能静默导出已失真的数字 ID 或超出 Excel 上限的内容',(
  assert.throws(()=>sourceExportRows([{shopId:'intel',goodsId:12345678901234567890}],[],'intel'),/精度/);
  assert.throws(()=>sourceExportWorkbook([['id','ERP','显示','a'.repeat(32768)]]),/32767/);
 });
+
+ test('升级项使用本店已选加购，忽略旧升级字段和未勾选商品',()=>{
+ const rows=[{shopId:'intel',goodsId:'1',name:'A',upgrade:'旧 +219',addonText:'旧缓存',addonChoices:[{id:'a',goodsId:'2',label:'升级新款',priceCents:24900,enabled:true},{id:'b',goodsId:'3',label:'不展示',priceCents:39900,enabled:false}]},{shopId:'intel',goodsId:'4',name:'B',upgrade:'过时文案',addonText:''}];
+ assert.deepEqual(sourceExportRows(rows,[],'intel').map(r=>r[3]),['【+249元升级新款】','']);
+ });

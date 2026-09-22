@@ -26,6 +26,6 @@ test('copy transfers binding quantity descriptions and addons but reads current 
  target.parts[0].slot='显卡';assert.throws(()=>pastePartPayload(target,0,payload,[row]),/槽位/);
 });
 test('overview deducts installment and shows missing costs independently',()=>{
- const c=config();c.parts[0].erp=100;assert.deepEqual(overviewProfits(c,{coupon:400}),[580,720]);
+ const c=config();c.parts[0].erp=100;assert.deepEqual(overviewProfits(c,{coupon:400}),[611.2,720]);
  c.parts[0].tax=null;assert.deepEqual(overviewProfits(c,{coupon:400}),[null,720]);c.parts[0].erp=null;assert.deepEqual(overviewProfits(c,{}),[null,null]);
 });

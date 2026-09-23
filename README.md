@@ -16,7 +16,7 @@
 | 成本与导入 | ERP 单价缺失时明确提示核算成本回退；WPS 按精确商品 ID 匹配名称并导入升级说明 |
 | 历史与空间 | 历史快照无损压缩、命名版本和还原；旧图片缓存先预览再移入回收站 |
 
-截至 2026-09-23，已核对的 GitHub 最新 Windows 下载包仍为 **v1.0.6**。`main` 中的 1.0.18 源码已经更新，下载旧 Release 不会自动获得新功能；下载时以 Release 的标签与附件文件名为准。
+Windows 下载包已更新为 **v1.0.18**：[GitHub 下载页](https://github.com/yamakaze1234/diy-tools/releases/tag/v1.0.18) · [Gitea 下载页](https://gitea.cq360.top/CoreStudio/diy-tools/releases/tag/v1.0.18)。两端提供相同 ZIP 与 SHA256 校验文件；下载附件 `DIY-Workbench-v1.0.18-Windows-x64.zip`，完整解压使用。
 
 ## 快速入口
 

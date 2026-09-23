@@ -1,12 +1,30 @@
 # DIY 配置工作台
 
-面向 DIY 整机业务的本地优先工作台，用于维护多店商品配置、核算成本与利润、读取 ERP 库存、制作配置图，并通过 CloudBase 与团队成员同步。当前源码版本为 **Python 桌面版 1.0.6**，支持 Windows 10/11 x64。
+面向 DIY 整机业务的本地优先工作台，用于维护多店商品配置、核算成本与利润、读取 ERP 库存、制作配置图，并通过 CloudBase 与团队成员同步。当前源码版本为 **Python 桌面版 1.0.18**，支持 Windows 10/11 x64；轻量网页版源码为 **1.0.1**。
+
+源码仓库：[Gitea](https://gitea.cq360.top/CoreStudio/diy-tools) · [GitHub](https://github.com/yamakaze1234/diy-tools)。桌面版本以 [pyproject.toml](python-desktop/pyproject.toml) 为准，网页版本以 [package.json](web-lite/package.json) 为准。
+
+## 本次更新
+
+从 1.0.6 升级到 1.0.18，主要变化如下；逐版本记录见 [更新日志](RELEASE_NOTES.md)。
+
+| 使用场景 | 更新后的行为 |
+| --- | --- |
+| 配件名称与升级文案 | 输出源名称与配置图展示名称分开维护；支持筛选并批量修改逐项升级说明，保留手动加购条目 |
+| 多选与批量排版 | 切换当前配置保留本店勾选；全部编辑格式可同步独立图片、位置、大小及图层顺序 |
+| 保存与出图 | 减少批量保存的重复计算；修复复制后编辑的保存失败；PNG/ZIP 按点击时的快照导出 |
+| 成本与导入 | ERP 单价缺失时明确提示核算成本回退；WPS 按精确商品 ID 匹配名称并导入升级说明 |
+| 历史与空间 | 历史快照无损压缩、命名版本和还原；旧图片缓存先预览再移入回收站 |
+
+截至 2026-09-23，已核对的 GitHub 最新 Windows 下载包仍为 **v1.0.6**。`main` 中的 1.0.18 源码已经更新，下载旧 Release 不会自动获得新功能；下载时以 Release 的标签与附件文件名为准。
 
 ## 快速入口
 
 | 我想做什么 | 入口 |
 | --- | --- |
 | 下载可运行程序 | [最新 GitHub Release](https://github.com/yamakaze1234/diy-tools/releases/latest) |
+| 查看 Gitea 发布附件 | [Gitea Releases](https://gitea.cq360.top/CoreStudio/diy-tools/releases) |
+| 查看版本变化 | [更新日志](RELEASE_NOTES.md) |
 | 看完整功能与操作步骤 | [功能说明书（HTML）](docs/DIY配置工作台-产品说明书.html) |
 | 第一次使用或查操作流程 | [使用教程](docs/使用手册.md) |
 | 了解系统组成和数据流向 | [系统架构说明](docs/架构说明.md) · [交互架构图](docs/diagrams/architecture.html) |
@@ -31,7 +49,7 @@
 ## 三分钟上手
 
 1. 从 [Releases](https://github.com/yamakaze1234/diy-tools/releases/latest) 下载 Windows ZIP，完整解压，保持 EXE 与 `_internal` 文件夹同级。
-2. 双击 EXE，使用管理员开通的成员账号登录。首次使用按提示接收团队工作区，或由初始化成员发布本机基线。
+2. 管理员先按[客户端配置](docs/部署与开发.md#客户端配置)填写本团队云配置并开通成员，再双击 EXE 登录。首次使用按提示接收团队工作区，或由初始化成员发布本机基线。
 3. 选择店铺、商品链接和配置；维护实际配件、数量、售价、人工核算价、升级项与服务说明。
 4. 需要最新成本和库存时打开“ERP同步”，先检查预览，再确认应用。库存未知不会被当作零库存。
 5. 调整配置图并保存，确认预览后下载 PNG，或勾选多套配置批量导出 ZIP。
@@ -60,9 +78,11 @@
 
 ## 源码运行
 
-准备 PowerShell 7、Node.js 24、uv、Python 3.13.6 和 Microsoft Edge WebView2。在仓库根目录执行：
+准备 PowerShell 7、Node.js 24、uv、Python 3.13.6 和 Microsoft Edge WebView2。首次克隆并进入仓库后执行（已有源码时跳过前两行）：
 
 ```powershell
+git clone https://gitea.cq360.top/CoreStudio/diy-tools.git
+Set-Location diy-tools
 npm ci --prefix prototype
 uv sync --project python-desktop --locked
 if (!(Test-Path prototype/.env.local)) { Copy-Item prototype/.env.example prototype/.env.local }
@@ -83,6 +103,8 @@ npm test --prefix web-lite
 uv run --project python-desktop --locked python -X utf8 -m unittest discover -s python-desktop/tests -v
 uv run --project python-desktop --locked python -X utf8 python-desktop/build.py
 ```
+
+构建后按[打包步骤](docs/部署与开发.md#测试与打包)准备 WebView2 引导安装程序，再运行 `uv run --project python-desktop --locked python -X utf8 python-desktop/package.py` 生成分发 ZIP。构建路径记录在 `python-desktop/verification/latest-build.json`，分发包位于 `release/`。
 
 Node 与 Python 默认测试使用合成数据。浏览器验收、在线云同步和正式打包需要相应运行环境，不属于默认测试。
 

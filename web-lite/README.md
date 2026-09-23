@@ -1,6 +1,6 @@
 # 配置工作台 · 轻量网页版
 
-正式版 1.0.0：运行 `node release.mjs` 构建发布目录；使用与部署说明见 [RELEASE-GUIDE.md](RELEASE-GUIDE.md)。以下保留开发、示例和验证说明。
+当前源码 1.0.1：运行 `node release.mjs` 构建发布目录；使用与部署说明见 [RELEASE-GUIDE.md](RELEASE-GUIDE.md)。以下保留开发、示例和验证说明。
 
 包含独立示例原型 `index.html` 和成员登录云端版 `cloud.html`。示例数据与真实工作区使用独立存储，不会把示例内容上传云端。云端版直接调用现有 CloudBase `workbenchApi` 协议 v2。
 

@@ -1,5 +1,7 @@
 # Python 桌面版
 
+当前源码版本 **1.0.18**。安装入口与版本状态见[项目首页](../README.md)，1.0.6 之后的逐版本变化统一见[更新日志](../RELEASE_NOTES.md)。下方早期版本记录保留为历史参考。
+
 现有 HTML/CSS 和配置图渲染继续使用。桌面由 Python + pywebview / Windows Edge WebView2 承载，SQL、CloudBase 网络访问、SQLite 同步队列、JSON 文件保存、历史版本、凭据加密和后台调度全部由 Python 实现；运行时不启动 Node 或 Electron。
 
 少量经过现有测试验证的业务纯函数（配置标准化、投影、合并、差异计算）通过 Python 内嵌 QuickJS 复用，避免迁移改变报价、字段含义或布局。这些函数不能读写文件、访问网络或执行系统命令。构建时使用 Node/esbuild 打包共享规则；使用者不需要安装 Node 或 Python。
@@ -11,6 +13,7 @@
 ```powershell
 uv sync --project python-desktop --locked
 node python-desktop/build-web.mjs
+Copy-Item prototype/.env.local python-desktop/web/.env.local
 uv run --project python-desktop --locked python -X utf8 python-desktop/main.py
 ```
 

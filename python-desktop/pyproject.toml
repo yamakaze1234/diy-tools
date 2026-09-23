@@ -1,6 +1,6 @@
 [project]
 name = "diy-workbench-desktop"
-version = "1.0.6"
+version = "1.0.18"
 description = "DIY configuration workbench for Windows"
 requires-python = "==3.13.*"
 dependencies = [

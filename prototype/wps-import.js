@@ -1,4 +1,5 @@
 import {slots,clone} from './core.js';
+import {sourceUpgradeDescription} from './source.js';
 
 // WPS/Excel clipboard text uses tabs, quoted multiline cells and doubled quotes.
 export function clipboardRows(text){
@@ -70,6 +71,7 @@ export function parseWpsParts(text,{catalog=[],costSource=[],configs=[],format='
   const qty=Number(rawQty);if(!rawQty||!Number.isSafeInteger(qty)||qty<1){group.errors.push(`第 ${line} 行：数量必须为正整数`);continue;}
   const goodsId=/^0+$/.test(id)?'':id,choices=sourceById.get(goodsId)||[],exact=choices.filter(c=>c.name===name||c.originalName===name),source=exact.length===1?exact[0]:choices.length===1?choices[0]:null;
   const known=knownById.get(goodsId),positionKind=structured&&offset>=2&&offset<=9?coreSlots[offset-2]:structured&&offset>=11&&offset<=16?(offset===11?'风扇':'配件'):'';
+  if(goodsId&&choices.length>1&&!source)group.errors.push(`第 ${line} 行：输出表中该 goods ID 对应多个配件，请在 WPS 中填写准确的输出表名称`);
   const kind=category(hint)||positionKind||category(name)||(known?.size===1?[...known][0]:'');
   let slot=kind;const notes=[];
   if(kind==='配件'||used.has(kind)&&['风扇','硬盘','内存'].includes(kind)){slot=slots.find(s=>s.startsWith('配件')&&!used.has(s))||'';if(kind!=='配件')notes.push(`第二项${kind}放入 ${slot||'待分配槽位'}`);}
@@ -78,9 +80,9 @@ export function parseWpsParts(text,{catalog=[],costSource=[],configs=[],format='
   if(!goodsId)notes.push('原 ID 为 0，保留名称，不绑定配件 ID');
   else if(!source&&!cost)notes.push('未匹配本地成本，保留原 ID 与名称，成本待补');
   else if(choices.length>1&&!source)notes.push('同 ID 有多条输出源，未自动绑定展示资料');
-  else if(source&&source.name!==name)notes.push('保留粘贴名称，成本按 ID 匹配');
+  else if(source&&source.name!==name)notes.push('已按本店输出表名称替换 WPS 名称');
   if(goodsId&&(erp===null||tax===null))notes.push('部分成本缺失');
-  const part={slot,goodsId,qty,name,erp,tax,warranty:source?.warranty||'',upgrade:source?.upgrade||''};if(source)part.sourceId=source.sourceId;
+  const part={slot,goodsId,qty,name:source?.name||name,erp,tax,warranty:source?.warranty||'',upgrade:source?sourceUpgradeDescription(source):''};if(source)part.sourceId=source.sourceId;
   const row={line,part,notes};group.rows.push(row);result.rows.push(row);
  }
  finish();
@@ -89,7 +91,7 @@ export function parseWpsParts(text,{catalog=[],costSource=[],configs=[],format='
 
 export function mountWpsImport(container,options){
  const esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
- container.innerHTML=`<details class="wps-import"><summary>从 WPS 粘贴配置配件</summary><p class="hint">可连续复制多套配置，保留每套 19 行原始结构。支持 ID／数量／名称三列、D:H 五列或从 A 列开始的完整表格；自动跳过表头、汇总和空配件行。</p><div class="inline-grid"><label class="field">粘贴格式<select data-wps-format><option value="auto">自动识别原表区域</option><option value="3">三列：ID / 数量 / 名称</option><option value="5">五列：D:H 原表区域</option><option value="full">完整表格：从 A 列开始</option></select></label><label class="field">D:H 区域中的数量<select data-wps-quantity><option value="auto">自动识别 E / F 列</option><option value="E">E 列（截图格式）</option><option value="F">F 列</option></select></label></div><textarea data-wps-text aria-label="WPS 配件数据" placeholder="从 WPS 复制单元格后粘贴到这里，可一次粘贴多套"></textarea><button data-wps-check type="button">预览导入配件</button><p data-wps-status role="status" class="hint"></p><details data-wps-errors hidden><summary>查看需要修正的行</summary><div></div></details><div data-wps-preview></div></details>`;
+ container.innerHTML=`<details class="wps-import"><summary>从 WPS 粘贴配置配件</summary><p class="hint">可连续复制多套配置，保留每套 19 行原始结构。支持 ID／数量／名称三列、D:H 五列或从 A 列开始的完整表格；配件名称和升级说明以本店输出表为准。</p><div class="inline-grid"><label class="field">粘贴格式<select data-wps-format><option value="auto">自动识别原表区域</option><option value="3">三列：ID / 数量 / 名称</option><option value="5">五列：D:H 原表区域</option><option value="full">完整表格：从 A 列开始</option></select></label><label class="field">D:H 区域中的数量<select data-wps-quantity><option value="auto">自动识别 E / F 列</option><option value="E">E 列（截图格式）</option><option value="F">F 列</option></select></label></div><textarea data-wps-text aria-label="WPS 配件数据" placeholder="从 WPS 复制单元格后粘贴到这里，可一次粘贴多套"></textarea><button data-wps-check type="button">预览导入配件</button><p data-wps-status role="status" class="hint"></p><details data-wps-errors hidden><summary>查看需要修正的行</summary><div></div></details><div data-wps-preview></div></details>`;
  const $=selector=>container.querySelector(selector);let result=null,signature='';
  const key=()=>[$('[data-wps-text]').value,$('[data-wps-format]').value,$('[data-wps-quantity]').value].join('\u0000');
  function status(){const errors=importProblems(result);$('[data-wps-status]').classList.toggle('error',errors.length>0);const summary=`已识别 ${result.rows.length} 项配件，共 ${result.groups.length} 套配置；跳过 ${result.skipped} 行（表头 ${result.skipCounts.header}、汇总 ${result.skipCounts.summary}、空行 ${result.skipCounts.empty}、空配件 ${result.skipCounts.placeholder}）。数量：${result.quantity}。`;$('[data-wps-status]').textContent=summary+(errors.length?`有 ${errors.length} 处需修正：${errors.slice(0,3).join('；')}`:'核对后可一次创建全部配置。');$('[data-wps-errors]').hidden=!errors.length;$('[data-wps-errors] div').textContent=errors.join('\n');}

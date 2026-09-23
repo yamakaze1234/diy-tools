@@ -9,17 +9,19 @@ export const hash=v=>createHash('sha256').update(typeof v==='string'?v:JSON.stri
 const derived=['erp','tax','stockAvailable','stockUpdatedAt','erpUpdatedAt','erpMissing','erpUnknown','taxUpdatedAt'];
 const strip=row=>{const r=stripLocalErp(row);for(const k of derived)delete r[k];return r;};
 const cents=v=>v==null?null:Math.round(v*100);
-export function projectWorkspace(state){
+export function projectWorkspace(state,configurationOnly=false,selected=null){
  const records=[],scope=state.sharedCostScope||state.erpSync?.scope||'unbound',seen=new Set(),componentIds=new Set((state.costSource||[]).map(c=>c.goodsId));
+ const wanted=(type,id)=>!selected||selected[type]===null||selected[type].has(id);
  const add=(type,id,data)=>{const key=recordKey(type,id);if(seen.has(key))throw Error('重复记录 ID：'+id);seen.add(key);records.push({type,id,data:stripLocalErp(data)});};
  // Product grouping can change array positions without changing the saved order.
  // Keep that order in the edit baseline so deletion does not look concurrent.
- for(const [index,c] of (state.configs||[]).entries()){const d=copy(c);d.workspaceOrder=Number.isFinite(c.workspaceOrder)?c.workspaceOrder:index;d.priceCents=cents(d.price);delete d.price;for(const k of ['deletionSessionId','updatedAt','taxUpdatedAt','erpImportedAt'])delete d[k];for(const field of ['parts',...(Array.isArray(d.actualParts)?['actualParts']:[])])d[field]=d[field].map((p,i)=>({...(!componentIds.has(p.goodsId)||c.deletedAt?copy(p):strip(p)),lineId:p.lineId||'line-'+hash(field==='parts'?[c.id,i,p.slot]:[c.id,field,i,p.slot]).slice(0,24)}));add('configuration',c.id,d);}
- for(const c of state.costSource||[])if(!c.localInventoryOnly||c.tax!=null)add('component',`${scope}|${c.goodsId}`,{erpScopeId:scope,goodsId:c.goodsId,name:c.name,taxCents:cents(c.tax)});
- for(const s of state.sourceCatalog||[])add('source',s.sourceId,componentIds.has(s.goodsId)?strip(s):copy(s));
- for(const t of state.templates||[])add('template',t.id,copy(t));
- for(const [id,d] of Object.entries(state.shopSettings||{})){const data={...copy(d),couponCents:cents(d.coupon)};delete data.coupon;add('settings',id,data);}
- for(const g of state.caseGallery||[])add('gallery',g.id,copy(g));
+ for(const [index,c] of (state.configs||[]).entries()){if(!wanted('configuration',c.id))continue;const d=copy(c);d.workspaceOrder=Number.isFinite(c.workspaceOrder)?c.workspaceOrder:index;d.priceCents=cents(d.price);delete d.price;for(const k of ['deletionSessionId','updatedAt','taxUpdatedAt','erpImportedAt'])delete d[k];for(const field of ['parts',...(Array.isArray(d.actualParts)?['actualParts']:[])])d[field]=d[field].map((p,i)=>({...(!componentIds.has(p.goodsId)||c.deletedAt?copy(p):strip(p)),lineId:p.lineId||'line-'+hash(field==='parts'?[c.id,i,p.slot]:[c.id,field,i,p.slot]).slice(0,24)}));add('configuration',c.id,d);}
+ if(configurationOnly)return records;
+ for(const c of state.costSource||[])if(wanted('component',c.goodsId)&&(!c.localInventoryOnly||c.tax!=null))add('component',`${scope}|${c.goodsId}`,{erpScopeId:scope,goodsId:c.goodsId,name:c.name,taxCents:cents(c.tax)});
+ for(const s of state.sourceCatalog||[])if(wanted('source',s.sourceId))add('source',s.sourceId,componentIds.has(s.goodsId)?strip(s):copy(s));
+ for(const t of state.templates||[])if(wanted('template',t.id))add('template',t.id,copy(t));
+ for(const [id,d] of Object.entries(state.shopSettings||{})){if(!wanted('settings',id))continue;const data={...copy(d),couponCents:cents(d.coupon)};delete data.coupon;add('settings',id,data);}
+ for(const g of state.caseGallery||[])if(wanted('gallery',g.id))add('gallery',g.id,copy(g));
  return records;
 }
 export function applyWorkspace(template,records){
@@ -42,6 +44,21 @@ export function applyWorkspace(template,records){
  const enrich=r=>{if(isSpecialComponent(r)){Object.assign(r,normalizeSpecialComponent(r));return;}const c=costs.get(r.goodsId);if(!c)return;for(const k of derived)if(k in c)r[k]=copy(c[k]);};
  next.sourceCatalog.forEach(enrich);next.configs.forEach(c=>{if(!c.deletedAt)allConfigParts(c).forEach(enrich);});return next;
 }
+function changedProjectionIds(before,after){
+ const changed=(oldRows,newRows,key,transform=row=>row)=>{
+  const index=rows=>{const map=new Map();for(const [i,row] of (rows||[]).entries()){const id=row[key];if(map.has(id))throw Error('重复记录 ID：'+id);map.set(id,JSON.stringify(transform(row,i)));}return map;};
+  const old=index(oldRows),fresh=index(newRows);
+  return new Set([...new Set([...old.keys(),...fresh.keys()])].filter(id=>old.get(id)!==fresh.get(id)));
+ };
+ const settings=state=>Object.entries(state.shopSettings||{}).map(([id,data])=>({id,data}));
+ const selected={configuration:changed(before.configs,after.configs,'id',(c,i)=>({...c,workspaceOrder:Number.isFinite(c.workspaceOrder)?c.workspaceOrder:i})),component:changed(before.costSource,after.costSource,'goodsId'),source:changed(before.sourceCatalog,after.sourceCatalog,'sourceId'),template:changed(before.templates,after.templates,'id'),settings:changed(settings(before),settings(after),'id'),gallery:changed(before.caseGallery,after.caseGallery,'id')};
+ // Component membership controls stripping of derived prices from both sources
+ // and configurations. Re-project those records when that dependency changes.
+ const oldIds=new Set((before.costSource||[]).map(c=>c.goodsId)),newIds=new Set((after.costSource||[]).map(c=>c.goodsId));
+ if(oldIds.size!==newIds.size||[...oldIds].some(id=>!newIds.has(id))){selected.configuration=null;selected.source=null;}
+ if((before.sharedCostScope||before.erpSync?.scope||'unbound')!==(after.sharedCostScope||after.erpSync?.scope||'unbound'))selected.component=null;
+ return selected;
+}
 export function changesBetween(before,after){
  // Saving gallery metadata does not change component/configuration records.
  // Compare their inputs once instead of projecting and hashing every ERP row.
@@ -52,7 +69,8 @@ export function changesBetween(before,after){
   for(const r of old.values())changes.push({...r,data:{...r.data,deletedAt:new Date().toISOString()},expectedDraft:r.data});
   return changes;
  }
- const old=new Map(projectWorkspace(before).map(r=>[recordKey(r.type,r.id),r])),fresh=projectWorkspace(after),changes=[];
+ const selected=changedProjectionIds(before,after);
+ const old=new Map(projectWorkspace(before,false,selected).map(r=>[recordKey(r.type,r.id),r])),fresh=projectWorkspace(after,false,selected),changes=[];
  // Legacy records have no saved order. Do not invent one in the comparison
  // baseline: it would make an unchanged stored record appear remotely edited.
  const legacyOrder=new Set((before.configs||[]).filter(c=>!Number.isFinite(c.workspaceOrder)).map(c=>c.id));

@@ -30,12 +30,13 @@ export function scopedPartUsage(configs,query,scope){
  return findPartUsage(configs.map(c=>({...c,parts:fields.flatMap(field=>field==='parts'?c.parts:actualParts(c))})),query);
 }
 export function linkPartsPlan(configs,{scope={parts:true,actualParts:true},mode='replace',partKey,row,slot,qty=null}){
- const fields=targetFields(scope),changes=new Map(),productIds=[...new Set(configs.map(c=>c.productId))];
+ const fields=targetFields(scope),changes=new Map(),productIds=[...new Set(configs.map(c=>c.productId))],byId=new Map(configs.map(c=>[c.id,c]));
  for(const field of fields){
-  const inputs=configs.map(c=>({...clone(c),parts:clone(field==='parts'?c.parts:actualParts(c))}));
+  // Field plans only edit parts/addons; full snapshots are captured once when merging.
+  const inputs=configs.map(c=>({id:c.id,productId:c.productId,product:c.product,spu:c.spu,shopId:c.shopId,name:c.name,deletedAt:c.deletedAt,parts:field==='parts'?c.parts:actualParts(c),addons:c.addons}));
   const plan=mode==='add'?additionPlan(inputs,null,row,slot,qty):replacementPlan(inputs,partKey,productIds,row,qty);
   for(const change of plan.changes){
-   const original=configs.find(c=>c.id===change.id);
+   const original=byId.get(change.id);
    if(!changes.has(change.id)){const after=clone(original);ensureActualParts(after);changes.set(change.id,{...change,before:clone(original),after});}
    const merged=changes.get(change.id);merged.after[field]=change.after.parts;
    if(field==='parts')merged.after.addons=change.after.addons;
@@ -54,8 +55,11 @@ export function openLinkParts(api){
  const {product,openDialog,esc,getConfigs,getCatalog,apply,toast}=api;
  openDialog('链接内配件批量修改',`<p class="hint">${esc(product.name)} · 先选择修改范围，再预览差异并应用。</p><label class="field">修改范围<select id="link-part-scope"><option value="link">当前链接全部配置</option><option value="selected">按左侧勾选配置修改（本店，可跨链接）</option></select></label><div class="actions" role="group" aria-label="修改内容"><label><input id="link-part-display" type="checkbox" checked> 展示配件</label><label><input id="link-part-actual" type="checkbox" checked> 实际配置</label></div><p id="link-part-scope-summary" class="hint"></p><label class="field">操作<select id="link-part-mode"><option value="replace">查找替换配件</option><option value="add">一键添加配件</option></select></label><div id="link-part-old"><label class="field">查找原配件<input id="link-part-query" placeholder="配件名称或 ERP ID"></label><select id="link-part-match" aria-label="原配件"><option value="">请选择原配件</option></select></div><div id="link-part-new"></div><label id="link-part-slot-field" class="field hidden">添加到槽位<select id="link-part-slot">${slots.map(s=>`<option>${s}</option>`).join('')}</select></label><label class="field">数量（替换时留空保留原数量）<input id="link-part-qty" type="number" min="1" step="1"></label><div class="actions"><button id="link-part-preview">预览修改</button><button id="link-part-apply" class="primary" disabled>应用到本链接</button></div><pre id="link-part-diff" style="white-space:pre-wrap"></pre><p id="link-part-status" role="status"></p>`);
  const $=s=>document.querySelector(s);let plan=null,busy=false;
+ const dialog=$('#link-part-status').closest('dialog'),controller=new AbortController();
+ dialog.addEventListener('cancel',e=>{if(busy)e.preventDefault();},{signal:controller.signal});
+ dialog.addEventListener('close',()=>controller.abort(),{once:true,signal:controller.signal});
  const scope=()=>({parts:$('#link-part-display').checked,actualParts:$('#link-part-actual').checked});
- const configs=()=>getConfigs().filter(c=>!c.deletedAt&&($('#link-part-scope').value==='selected'?(api.getSelectedIds?.()||[]).includes(c.id):c.productId===product.id));
+ const configs=()=>{const selected=$('#link-part-scope').value==='selected'?new Set(api.getSelectedIds?.()||[]):null;return getConfigs().filter(c=>!c.deletedAt&&(selected?selected.has(c.id):c.productId===product.id));};
  const scopeSummary=()=>{const rows=configs();$('#link-part-scope-summary').textContent=rows.length?`范围内 ${rows.length} 套：`+rows.map(c=>`${c.product} / ${c.name}`).join('、'):'尚未勾选配置，请先在左侧勾选';$('#link-part-apply').textContent=$('#link-part-scope').value==='selected'?'应用到勾选配置':'应用到本链接';};
  const invalidate=()=>{plan=null;$('#link-part-apply').disabled=true;$('#link-part-diff').textContent='';};
  const picker=mountProductSearch($('#link-part-new'),{getRows:getCatalog,idKey:'sourceId',label:'选择新配件',inputId:'link-part-new-query',describe:r=>'ERP ID '+r.goodsId,onChange:invalidate});
@@ -74,10 +78,12 @@ export function openLinkParts(api){
   $('#link-part-diff').textContent=linkPartsDiff(plan);
   $('#link-part-status').textContent=`将修改 ${plan.changes.length} 套配置，${plan.scope.parts?'展示配件的绑定加购随新配件更新。':'仅更新实际配置。'}`;$('#link-part-apply').disabled=!plan.changes.length;
  }catch(e){invalidate();$('#link-part-status').textContent=e.message;}};
- $('#link-part-apply').onclick=async()=>{if(!plan||busy)return;busy=true;const button=$('#link-part-apply');button.disabled=true;try{
+ $('#link-part-apply').onclick=async()=>{if(!plan||busy)return;busy=true;const controls=[...dialog.querySelectorAll('input,select,button')].map(el=>({el,disabled:el.disabled}));controls.forEach(({el})=>el.disabled=true);try{
+  $('#link-part-status').textContent=`正在应用并保存 ${plan.changes.length} 套配置，请稍候…`;
+  await new Promise(resolve=>requestAnimationFrame(()=>setTimeout(resolve,0)));
   if(JSON.stringify(configs().map(c=>c.id).sort())!==JSON.stringify(plan.scopeIds))throw Error('勾选范围已变化，请重新预览');
   const row=getCatalog().find(r=>r.sourceId===plan.replacement.sourceId);
   if(JSON.stringify(row)!==JSON.stringify(plan.replacement))throw Error('配件资料已变化，请重新预览');
   await apply(plan);toast('所选范围内配件已统一修改并保存');api.closeDialog();
- }catch(e){$('#link-part-status').textContent=e.message;invalidate();}finally{busy=false;}};
+ }catch(e){$('#link-part-status').textContent=e.message;invalidate();}finally{busy=false;controls.forEach(({el,disabled})=>el.disabled=disabled);if(!plan)$('#link-part-apply').disabled=true;}};
 }

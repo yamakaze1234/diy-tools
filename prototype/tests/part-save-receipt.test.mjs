@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mergeEditingState,sameEditingState} from '../workspace-ui-merge.js';
+import {mergeEditingState,sameEditingState,rebaseSavedReceipt} from '../workspace-ui-merge.js';
 import {blankConfig} from '../core.js';
 import {normalizeWorkspaceState} from '../shops.js';
 import {applyWorkspace,projectWorkspace} from '../workspace-records.mjs';
@@ -38,4 +38,12 @@ test('回执补齐行编号时继续替换，保留新配件和稳定行编号',
 test('真实的配件替换与并发数量或型号修改仍需比较',()=>{
  const base=fixture(),local=fixture(),remote=fixture();local.configs[0].parts[0].goodsId='200';
  for(const patch of [{qty:2},{goodsId:'300'},{name:'别人修改'}]){remote.configs[0].parts[0]={...base.configs[0].parts[0],...patch,lineId:'line'};assert.equal(mergeEditingState(base,local,remote).conflict,true);}
+});
+test('保存期间继续改同一字段时，本页保存回执不会触发假冲突',()=>{
+ const sent=fixture(),current=fixture(),receipt=fixture();
+ sent.configs[0].parts[0].name=' CPU A ';
+ current.configs[0].parts[0].name='CPU B';
+ receipt.configs[0].parts[0].name='CPU A';
+ assert.equal(mergeEditingState(sent,current,receipt).conflict,true);
+ assert.equal(rebaseSavedReceipt(sent,current,receipt).configs[0].parts[0].name,'CPU B');
 });

@@ -9,6 +9,7 @@ import {validateWorkspaceRecord} from '../workspace-validation.mjs';
 import {applyManualCosts,mergeErp} from '../erp-sync.js';
 import {inventoryPlan} from '../inventory-export.js';
 import {checkInventory,stockReplacementPlan} from '../inventory-check-data.js';
+import {alignDisplaySourceNames,replaceSourcePart} from '../source.js';
 const clone=structuredClone;
 const part=(slot,id,qty=1)=>({slot,goodsId:id,name:'配件 '+id,sourceId:'src-'+id,qty,erp:Number(id),tax:Number(id)+10});
 const config=()=>({...clone(seed.configs[0]),shopId:'intel',id:'actual-test',productId:'actual-product',price:1000,parts:[part('CPU','100'),part('风扇','200',3)],addons:[]});
@@ -32,6 +33,28 @@ test('continuous actual edits preserve the array reference; visual edits cannot 
  c.parts[0].posterVisible=false;c.parts[0].upgrade='展示升级';c.parts[0].erp=999;syncActualParts(c,before);
  assert.equal(c.actualParts,rows);assert.equal(rows[0].goodsId,'300');rows[0].qty=5;syncActualParts(c,c.parts);assert.equal(c.actualParts[0].qty,5);
  assert.equal(c.parts[0].qty,1);
+});
+
+test('custom display name stays separate from the actual model, including later quantity edits',()=>{
+ const c=config();ensureActualParts(c);const before=clone(c.parts);
+ c.parts[0].displayName='海报专用名称';syncActualParts(c,before);
+ assert.equal(c.parts[0].name,'配件 100');
+ assert.equal(posterParts(c)[0].name,'海报专用名称');
+ assert.equal(c.actualParts[0].name,'配件 100');
+ const renamed=clone(c.parts);c.parts[0].qty=2;syncActualParts(c,renamed);
+ assert.equal(c.actualParts[0].name,'配件 100');assert.equal(c.actualParts[0].qty,2);
+ const requantified=clone(c.parts);c.parts[0].sourceId='src-300';c.parts[0].goodsId='300';c.parts[0].name='新配件';syncActualParts(c,requantified);
+ assert.equal(c.actualParts[0].name,'新配件');assert.equal(c.actualParts[0].goodsId,'300');
+});
+
+test('previous custom name migrates to displayName and replacing source clears it',()=>{
+ const c=config();ensureActualParts(c);c.parts[0].name='旧版自定义展示名';
+ const catalog=[{shopId:'intel',sourceId:'src-100',goodsId:'100',name:'输出源标准名'}];
+ alignDisplaySourceNames([c],catalog);
+ assert.equal(c.parts[0].name,'输出源标准名');assert.equal(c.parts[0].displayName,'旧版自定义展示名');
+ assert.equal(c.actualParts[0].name,'配件 100');assert.equal(posterParts(c)[0].name,'旧版自定义展示名');
+ replaceSourcePart(c,0,{...catalog[0],sourceId:'next'});
+ assert.equal(c.parts[0].name,'输出源标准名');assert.equal(c.parts[0].displayName,undefined);
 });
 test('costs and ERP columns use actual quantities and IDs; posters still use display parts',()=>{
  const c=config(),shown=clone(c.parts);c.actualParts=[part('CPU','300',2)];

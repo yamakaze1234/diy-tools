@@ -11,7 +11,7 @@ from service import Service
 from server import start_server
 from storage_paths import storage_paths, prepare_storage
 
-VERSION = '1.0.6'
+VERSION = '1.0.18'
 
 
 def run():
@@ -60,6 +60,7 @@ def run():
             return
         import webview
         from download_notify import install_download_notifications
+        from webview_autofill import disable_saved_form_info
         install_download_notifications()
         webview.settings['ALLOW_DOWNLOADS'] = True
         webview.settings['ALLOW_FILE_URLS'] = False
@@ -108,7 +109,7 @@ def run():
             return False
 
         window.events.closing += close_requested
-        webview.start(gui='edgechromium', private_mode=False, storage_path=str(profile / 'python-webview'), icon=str(root / 'web' / 'assets' / 'workbench-icon-v1.ico'))
+        webview.start(func=lambda: disable_saved_form_info(window, runtime_file), gui='edgechromium', private_mode=False, storage_path=str(profile / 'python-webview'), icon=str(root / 'web' / 'assets' / 'workbench-icon-v1.ico'))
     finally:
         server.shutdown()
         server.server_close()

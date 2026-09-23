@@ -8,6 +8,13 @@ export {recentActivity,activityEntry} from '../prototype/activity.js';
 export {sqlStockPlan} from '../prototype/sql-sync.mjs';
 export {validateGallery} from '../prototype/case-gallery-data.js';
 export {validateAddon,sourceAddon} from '../prototype/addon-data.js';
+import {validateAddon,sourceAddon} from '../prototype/addon-data.js';
+// Cross the Python/JS boundary once per save, retaining the same validators.
+export function validateSaveAddons(sources,addons){
+ for(const row of sources)validateAddon(sourceAddon(row));
+ for(const addon of addons)validateAddon(addon);
+ return true;
+}
 export {validateSnapshot,mergeErp} from '../prototype/erp-sync.js';
 import {ErpJobs,browserErpScope} from '../prototype/erp-sync.js';
 let scope=null;const jobs=new ErpJobs(()=>scope);

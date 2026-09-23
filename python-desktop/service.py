@@ -10,7 +10,7 @@ import getpass
 from pathlib import Path
 from common import AppError, atomic, digest, dumps, now, uid
 from domain import Domain
-from store import Store, History
+from store import Store, History, LOCAL_FIELDS
 from cloud import Cloud
 from credentials import Credentials
 from sql_service import settings, normalize, read_bundle
@@ -41,14 +41,23 @@ class Service:
         self.state['logs'] = self.domain('recentActivity', self.state.get('logs', []))
         self.state.setdefault('revision', 0)
         self.history = History(self.local / 'versions.sqlite', self.domain)
+        self.history_timer = None
+        self.maintenance_timer = None
+        self.history_pending = False
+        self.history_started = None
+        self.history_error = None
         self.credentials = Credentials(self.local)
         self.session = dict(id=uid(), startedAt=now(), defaultOperator=getpass.getuser())
         self.previews = {}
         self.sql_reader = sql_reader or read_bundle
         atomic(file, dumps(self.state))
-        self.history.record(self.state, self.scope(), '启动 Python 工作台')
+        try:
+            self.history.record(self.state, self.scope(), '启动 Python 工作台')
+        except (AppError, sqlite3.Error, OSError) as error:
+            self.history_error = str(error)
         self.cloud = Cloud(self, transport)
         self.save_standard_products(self.state)
+        self.schedule_maintenance(60)
 
     def save_standard_products(self, state):
         """Business JSON stays independent of poster settings; index gates future matching."""
@@ -90,15 +99,65 @@ class Service:
 
     def save(self, value, reason):
         value['logs'] = self.domain('recentActivity', value.get('logs', []))
-        self.history.record(self.state, self.scope(), '修改前自动备份')
+        important = any(word in reason for word in ('导入', '批量', '还原', '应用 SQL', '应用 ERP'))
+        if important:
+            self.flush_history()
+        if not self.history_pending:
+            self.record_history(self.state, '修改前自动备份')
         atomic(self.local / 'state.json', dumps(value))
         if not self.cloud.enabled():
             changes = self.domain('changesBetween', self.state, value)
             with self.store.transaction():
                 self.store.log_local([dict(type=c['type'], id=c['id'], before=c.get('expectedDraft'), after=c['data']) for c in changes], self.cloud.audit_actor())
         self.state = value
-        self.history.record(value, self.scope(), reason)
+        if important:
+            self.record_history(value, reason)
+        else:
+            self.history_pending = True
+            self.history_started = self.history_started or time.monotonic()
+            self.schedule_history()
         self.save_standard_products(value)
+
+    def record_history(self, state, reason):
+        try:
+            self.history.record(state, self.scope(), reason)
+            self.history_error = None
+        except (AppError, sqlite3.Error, OSError) as error:
+            self.history_error = str(error)
+
+    def schedule_history(self):
+        if self.history_timer:
+            self.history_timer.cancel()
+        delay = min(120, max(0, 600 - (time.monotonic() - self.history_started)))
+        self.history_timer = threading.Timer(delay, self.flush_history)
+        self.history_timer.daemon = True
+        self.history_timer.start()
+
+    def flush_history(self):
+        with self.lock:
+            if self.history_timer:
+                self.history_timer.cancel()
+                self.history_timer = None
+            if self.history_pending:
+                self.record_history(self.state, '连续编辑自动版本')
+                self.history_pending = False
+                self.history_started = None
+
+    def schedule_maintenance(self, delay):
+        self.maintenance_timer = threading.Timer(delay, self.maintain_history)
+        self.maintenance_timer.daemon = True
+        self.maintenance_timer.start()
+
+    def maintain_history(self):
+        with self.lock:
+            if self.history_pending:
+                self.schedule_maintenance(180)
+                return
+            try:
+                self.history.prune()
+            except (sqlite3.Error, OSError, AppError) as error:
+                self.history_error = str(error)
+            self.schedule_maintenance(24 * 60 * 60)
 
     def actor(self, value):
         return str(value or self.session['defaultOperator']).strip()[:60] or self.session['defaultOperator']
@@ -141,7 +200,6 @@ class Service:
                     if field == 'sourceCatalog':
                         if row.get('shopId') not in shop_ids or not isinstance(row.get('name'), str):
                             raise AppError('输出源格式不正确')
-                        self.domain('validateAddon', self.domain('sourceAddon', row))
                     elif not re.fullmatch(r'\d{1,20}', key):
                         raise AppError('成本源格式不正确')
             if 'shopSettings' in incoming:
@@ -158,8 +216,8 @@ class Service:
             for config in configs:
                 if not isinstance(config, dict) or config.get('shopId') not in shop_ids or config.get('installment', 0) not in (0, 12, 24) or not isinstance(config.get('addons'), list) or not isinstance(config.get('parts'), list) or ('actualParts' in config and not isinstance(config['actualParts'], list)):
                     raise AppError('配置店铺、配件、分期或加购格式无效')
-                for addon in config['addons']:
-                    self.domain('validateAddon', addon)
+            self.domain('validateSaveAddons', incoming.get('sourceCatalog', []),
+                        [addon for config in configs for addon in config['addons']])
             next_state = copy.deepcopy(state)
             for key in ('configs', 'templates', 'sourceCatalog', 'costSource', 'caseGallery', 'shopSettings'):
                 if key in incoming:
@@ -232,16 +290,73 @@ class Service:
             del self.previews[key]
             return dict(ok=True, **summary, configIds=plan['configIds'], revision=next_state['revision'])
 
+    def restore_target(self, key):
+        archived = self.history.get(key, self.scope())['state']
+        next_state = copy.deepcopy(self.state)
+        for field in ('configs', 'templates', 'sourceCatalog', 'caseGallery', 'shopSettings'):
+            if field in archived:
+                next_state[field] = copy.deepcopy(archived[field])
+        # ERP fields are local, time-sensitive observations. Copying an old
+        # configuration's layout must not roll its inventory or cost back.
+        def scrub_local(value):
+            if isinstance(value, dict):
+                for field in LOCAL_FIELDS:
+                    value.pop(field, None)
+                for child in value.values():
+                    scrub_local(child)
+            elif isinstance(value, list):
+                for child in value:
+                    scrub_local(child)
+
+        def preserve_local(old, current):
+            if isinstance(old, dict) and isinstance(current, dict):
+                if old.get('goodsId') and current.get('goodsId') and old['goodsId'] != current['goodsId']:
+                    scrub_local(old)
+                    return
+                for field in LOCAL_FIELDS:
+                    if field in current:
+                        old[field] = copy.deepcopy(current[field])
+                    else:
+                        old.pop(field, None)
+                for field, value in old.items():
+                    if field in current:
+                        preserve_local(value, current[field])
+                    else:
+                        scrub_local(value)
+            elif isinstance(old, list) and isinstance(current, list):
+                for field in ('id', 'lineId', 'sourceId', 'goodsId', 'slot'):
+                    if old and current and all(isinstance(item, dict) and item.get(field) is not None for item in old + current):
+                        existing = {item[field]: item for item in current}
+                        for item in old:
+                            if item[field] in existing:
+                                preserve_local(item, existing[item[field]])
+                            else:
+                                scrub_local(item)
+                        return
+                scrub_local(old)
+            else:
+                scrub_local(old)
+
+        preserve_local(next_state['configs'], self.state.get('configs', []))
+        preserve_local(next_state['sourceCatalog'], self.state.get('sourceCatalog', []))
+        return next_state
+
+    def preview_version(self, key):
+        return self.history.preview(key, self.scope(), self.state, self.restore_target(key))
+
     def restore(self, data, cookie):
         with self.lock:
             self.cloud.require_login(cookie)
             status = self.cloud.status()
             if any(status[k] for k in ('running', 'uncertain', 'conflicts')):
                 raise AppError('请等待同步结束并处理冲突或未确认提交，再还原版本')
-            preview = self.history.preview(data.get('id'), self.scope(), self.state)
+            preview = self.preview_version(data.get('id'))
             if data.get('baseRevision') != self.state['revision'] or data.get('hash') != preview['hash']:
                 raise AppError('当前数据或历史版本已变化，请重新预览')
-            next_state = self.history.get(data['id'], self.scope())['state']
+            self.flush_history()
+            if self.history_error:
+                raise AppError('恢复前未能保存当前版本：' + self.history_error)
+            next_state = self.restore_target(data['id'])
             next_state.update(revision=self.state['revision'] + 1, updatedAt=now(), logs=[dict(at=now(), operator=self.actor((self.cloud.member or {}).get('name')), message=f"还原历史版本 {preview['revision']}")] + self.state.get('logs', []))
             next_state = self.domain('normalizeWorkspaceState', next_state, self.catalog)
             next_state = self.cloud.persist(self.state, next_state)
@@ -275,6 +390,9 @@ class Service:
     def close(self):
         self.cloud.close()
         with self.lock:
+            if self.maintenance_timer:
+                self.maintenance_timer.cancel()
+            self.flush_history()
             self.history.close()
             self.store.close()
             self.domain.close()

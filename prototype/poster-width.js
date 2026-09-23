@@ -1,3 +1,4 @@
+import {posterParts} from './core.js';
 // Keep measurement and rendering on the same column grid.
 export function posterColumns(config,{tightRows=true,unifiedPanel=true,compact=config.layout==='square'}={}){
  if(unifiedPanel)return config.layout==='square'?{inset:20,categoryWidth:84,rightInset:12,labelGap:20}:{inset:16,categoryWidth:76,rightInset:12,labelGap:16};
@@ -8,8 +9,7 @@ export function modelCanvasWidth(ctx,config,{minimum=420,maximum=900,tightRows=t
  const module=(config.modules||[]).find(m=>m.type==='parts');
  if(module?.visible===false)return minimum;
  let longest=0;
- for(const part of config.parts||[]){
-  if(!part.name||part.posterVisible===false)continue;
+ for(const part of posterParts(config)){
   const style=config.textStyles?.[`part.${part.slot}.name`]||{};
   if(style.hidden)continue;
   const size=Number(style.size)||(Number(module?.size)||19)*(config.layout==='square'?.9:1);

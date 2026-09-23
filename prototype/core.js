@@ -7,7 +7,14 @@ import {restoreConfigOrder} from './config-order.js';
 export const slots=['CPU','散热','主板','内存','硬盘','显卡','电源','机箱','风扇','配件1','配件2','配件3','配件4','配件5'];
 export const clone=x=>structuredClone(x);
 export const cents=x=>x===''||x==null?null:Math.round(Number(x)*100);
-export function totals(config){let erp=0,tax=0,missing=0;for(const p of actualParts(config)){if(isSpecialComponent(p)||!p.name&&!p.goodsId)continue;const a=cents(p.erp),b=cents(p.tax);if(a==null||b==null)missing++;erp+=(a||0)*Number(p.qty||0);tax+=(b||0)*Number(p.qty||0);}const price=cents(config.price)||0;return{erp:erp/100,tax:tax/100,basis:Math.round(tax*1.04+10000)/100,erpProfit:Math.round(price*.98-erp)/100,taxProfit:(price-Math.round(tax*1.04+10000))/100,missing};}
+export function erpUnitCost(part){
+ if(isSpecialComponent(part))return{cents:0,fallback:false};
+ const real=cents(part.erp);
+ if(part.erpMissing!==true&&part.erpUnknown!==true&&real!=null&&Number.isFinite(real))return{cents:real,fallback:false};
+ const manual=cents(part.tax);
+ return{cents:manual!=null&&Number.isFinite(manual)?manual:null,fallback:manual!=null&&Number.isFinite(manual)};
+}
+export function totals(config){let erp=0,tax=0,missing=0,erpFallback=0,erpUnresolved=0;for(const p of actualParts(config)){if(isSpecialComponent(p)||!p.name&&!p.goodsId)continue;const a=erpUnitCost(p),b=cents(p.tax);if(a.fallback)erpFallback++;if(a.cents==null)erpUnresolved++;if(a.fallback||a.cents==null||b==null)missing++;erp+=(a.cents||0)*Number(p.qty||0);tax+=(b||0)*Number(p.qty||0);}const price=cents(config.price)||0;return{erp:erpUnresolved?null:erp/100,tax:tax/100,basis:Math.round(tax*1.04+10000)/100,erpProfit:erpUnresolved?null:Math.round(price*.98-erp)/100,taxProfit:(price-Math.round(tax*1.04+10000))/100,missing,erpFallback,erpUnresolved};}
 export function erpFormula(label){return `=IF([@[${label}_id]]<>"",INDEX([主机成本表V2.xlsb]库存数据!$BD:$BD,MATCH([@[${label}_id]],[主机成本表V2.xlsb]库存数据!$BB:$BB,0)),"")`;}
 const clean=x=>{const v=String(x??'').trim();return ['0','/','good id','数量'].includes(v.toLowerCase())?'':v;};
 export function erpRow(config){const seen=new Set();for(const p of actualParts(config)){if(p.name&&!isSpecialComponent(p)&&!clean(p.goodsId)&&!(p.slot==='显卡'&&/不含|无卡|核显|不配/.test(p.name)))throw Error(`${p.slot} 尚未绑定 ERP ID，请先选择配件`);if(clean(p.goodsId)){if(!slots.includes(p.slot))throw Error(`未分配 ERP 槽位：${p.name}`);if(seen.has(p.slot))throw Error(`ERP 槽位重复：${p.slot}`);seen.add(p.slot);if(!Number.isInteger(Number(p.qty))||Number(p.qty)<=0)throw Error(`${p.slot} 数量必须为正整数`);}}
@@ -25,7 +32,7 @@ export const modulesDefault=(shopId,theme)=>[
 // Add the new module without replacing existing text, styling, visibility or order.
 export function posterModules(config){const modules=config.modules||modulesDefault(config.shopId,config.theme);if(modules.some(m=>m.type==='service'))return modules;const next=[...modules],footer=next.findIndex(m=>m.type==='footer');let service=serviceModule(config.shopId,config.theme);while(next.some(m=>m.id===service.id))service.id+='-new';next.splice(footer<0?next.length:footer,0,service);return next;}
 export const posterPalette=theme=>theme==='dark'?{bg:'#07172e',text:'#eef5ff',accent:'#57bdff',line:'#213a59',muted:'#a3b7d0',panel:'#0e2643'}:{bg:'#ffffff',text:'#132b50',accent:'#0070dc',line:'#deebf7',muted:'#6b85a3',panel:'#eff6fd'};
-export const posterParts=config=>config.parts.filter(p=>p.name&&p.posterVisible!==false);
+export const posterParts=config=>config.parts.filter(p=>(p.displayName||p.name)&&p.posterVisible!==false).map(p=>p.displayName?{...p,name:p.displayName}:p);
 // Copy presentation only. Content and per-component visibility belong to each configuration.
 export function applyPosterStyle(source,target,{colors=true,format=true,images=false}={}){
  const src=clone(source),copyKeys=(from,to,keys)=>{for(const key of keys){if(from[key]===undefined)delete to[key];else to[key]=clone(from[key]);}};
@@ -67,12 +74,13 @@ export function applyPosterStyle(source,target,{colors=true,format=true,images=f
    }
    if(Object.keys(result).length)target[field]=result;else delete target[field];
   }
-  const targetLayers=target.posterImages||[],matched=new Set(),ordered=[];
-  for(const [index,layer] of (src.posterImages||[]).entries()){
-   const dest=targetLayers.find(t=>!matched.has(t)&&t.id===layer.id)||targetLayers.find(t=>!matched.has(t)&&t.url===layer.url)||targetLayers.find((t,i)=>i===index&&!matched.has(t));
-   if(dest){matched.add(dest);copyKeys(layer,dest,['transforms']);ordered.push(dest);}
+  const targetLayers=target.posterImages||[],matched=new Set(),synced=[];
+  for(const layer of src.posterImages||[]){
+   const dest=targetLayers.find(t=>!matched.has(t)&&t.id===layer.id)||targetLayers.find(t=>!matched.has(t)&&t.url===layer.url);
+   if(dest)matched.add(dest);
+   synced.push({...clone(layer),id:dest?.id||layer.id});
   }
-  if(target.posterImages)target.posterImages=[...ordered,...targetLayers.filter(t=>!matched.has(t))];
+  if(synced.length)target.posterImages=[...targetLayers.filter(t=>!matched.has(t)),...synced];
  }
  return target;
 }

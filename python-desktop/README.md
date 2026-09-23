@@ -44,7 +44,27 @@ ERP 成本及可销数仍只在本机保存，SQL 读取后预览确认。人工
 
 构建位置记录在 `verification/latest-build.json`。分发脚本仅收录 EXE、`_internal`、使用说明和 WebView2 安装程序，自动排除程序旁的 `data`，即使本机已使用过该程序也不会把业务数据打入分发包。
 
-版本：1.0.6。Windows 10/11 x64；使用 Windows Edge WebView2 运行时。分发包不包含当前业务数据、登录令牌或 SQL 账号密码。
+给本机升级时，先生成分发 ZIP，再复制旧版 `data` 到新版程序文件夹，并在启动新版前运行 `uv run --project python-desktop --locked python -X utf8 python-desktop/restore_local_config.py <旧版程序文件夹> <新版程序文件夹>`。构建程序只带空白登录模板；这个步骤沿用本机云端登录配置并更新本机校验清单，分发 ZIP 保持空白配置。脚本只接受新版仍为模板或已经与旧版一致的情况，不会覆盖另一份现有配置。
+
+版本：1.0.18。Windows 10/11 x64；使用 Windows Edge WebView2 运行时。分发包不包含当前业务数据、登录令牌或 SQL 账号密码。桌面版只保留账号密码自动填充，关闭并清理其他输入框的浏览器自动填充信息。SQL 未识别 ERP 单价时，配置价格与利润临时使用核算成本，并显示黄色警示；两种价格都缺失时不显示虚假的 ERP 利润。
+
+### 本机升级的发布检查
+
+`build.py` 会保存上次构建目录；`package.py` 先生成不含正式环境配置的公共 ZIP，再从上次程序恢复本机 EXE 的正式云端配置。旧配置缺失或仍是 `your-cloudbase-env-id` 等示例值时，停止本机发布，不切换快捷方式。公共 ZIP 需要部署者配置云端环境，不能把公共包检查通过等同于本机可登录。
+
+完成数据迁移、启动新版后，运行：
+
+```powershell
+uv run --project python-desktop --locked python -X utf8 python-desktop/release_config.py "<新版程序目录>" --verify-running
+```
+
+手工恢复配置时加 `--previous "<旧版程序目录>"`。该命令只输出配置一致性结果，不输出 accessKey 或账号凭据。
+
+每次发布还必须在实际新版窗口确认登录成功、`/api/state` 返回 200、配置数量与迁移记录一致、页面没有 `Failed to fetch` 或载入失败；使用只读总览检查本次 UI 改动。用户正在编辑时保留窗口和草稿，不为了验收刷新或关闭。若尚未登录，只能报告等待登录验证，不能报告整体验收通过。进程存活、窗口存在、静态 JS 返回 200 和隔离 headless 测试都不能替代这一步。
+
+历史版本在“多人同步 → 历史版本 → 历史数据管理”中查看和清理。普通历史每 7 天清理一次，保留每个工作区最新恢复点；手动命名版本长期保留并计入 5 GiB 历史库上限。连续编辑仍及时保存当前内容，恢复点按编辑阶段生成。旧版明文历史库可在退出工作台后用 `uv run --project python-desktop --locked python -X utf8 python-desktop/compact_history.py <data/versions.sqlite>` 转换；转换工具逐条校验并保留原库。
+
+“多人同步 → 本机空间 → 清理缓存”仅统计和清理 `data/images` 中被新版本取代的自动生成 PNG。清理前显示数量与大小，确认后移入 Windows 回收站；每套配置各版式和颜色的最新图保留。原始图片 `data/assets`、配置、备份、历史库、登录缓存和浏览器资料不在清理范围内。
 
 
 0.3.8 修复说明见 `verification/bugfix-0.3.8-summary.md`。

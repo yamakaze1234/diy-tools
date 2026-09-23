@@ -24,7 +24,7 @@ test('名称为空或 0 的占位行跳过，无表头但保留完整 19 行也�
 test('三列保留长 ID、原始名称、数量，成本只按精确 ID 取值',()=>{
  const id='3797170100491124774',text=`goods id\t数量\t配件\n${id}\t2\t英特尔 酷睿 I5 14600KF 14核20线程`;
  const result=parseWpsParts(text,{catalog:[{goodsId:id,name:'本地其他名称',sourceId:'x',erp:100,tax:90}],costSource:[{goodsId:id,erp:120,tax:110}]});
- assert.deepEqual(importProblems(result),[]);const p=result.rows[0].part;assert.equal(p.goodsId,id);assert.equal(p.qty,2);assert.equal(p.name,'英特尔 酷睿 I5 14600KF 14核20线程');assert.equal(p.erp,120);assert.equal(p.tax,110);assert.equal(p.sourceId,'x');assert.equal(totals({price:0,parts:[p]}).tax,220);
+ assert.deepEqual(importProblems(result),[]);const p=result.rows[0].part;assert.equal(p.goodsId,id);assert.equal(p.qty,2);assert.equal(p.name,'本地其他名称');assert.equal(p.erp,120);assert.equal(p.tax,110);assert.equal(p.sourceId,'x');assert.equal(totals({price:0,parts:[p]}).tax,220);
 });
 test('D:H 支持选择 E/F 数量，两个风扇独立保存，空槽位跳过，无卡不伪造 ID',()=>{
  const text='EXCEL利润\tERP利润\t数量\t定价\t\n47538\t1\t1\tCPU\t英特尔 14600KF\n0\t1\t1\t显卡\t不含显卡，可咨询客服加装显卡使用\n\t\t\t\t\n88750\t4\t8\t风扇\t乔思伯 ZA 连体风扇\n113932\t1\t1\t风扇\tARGB 定制光效\n0\t1\t1\t配件\t';
@@ -40,4 +40,17 @@ test('未匹配 ID 保留并告警，未知分类需要选择；缺失成本不�
 test('错误行不被静默吞掉：科学计数法、数量、列错位与多套配置混贴均阻止创建',()=>{
  for(const text of ['1.234E+15\t1\tCPU','123\t0\tCPU','123\t1.5\tCPU','123\t1\tCPU\t额外列','123\t1\tCPU\n456\t1\tCPU'])assert.ok(importProblems(parseWpsParts(text)).length,text);
  const result=parseWpsParts('123\t1\tCPU\n456\t错误\t主板');assert.equal(result.rows.length,1);assert.ok(importProblems(result).some(e=>e.includes('第 2 行')));
+});
+
+
+test('WPS 按本店输出表匹配显示名称，并把仅文字及多选加购带入逐项升级说明',()=>{
+ const catalog=[{sourceId:'text',shopId:'intel',goodsId:'101',name:'输出表 CPU',addonText:'【仅文字说明】',addonChoices:[{id:'one',label:'【仅文字说明】',goodsId:'',enabled:true}]},{sourceId:'multi',shopId:'intel',goodsId:'102',name:'输出表散热',addonText:'待同步',addonChoices:[{id:'a',label:'【文字 A】',goodsId:'',enabled:true},{id:'b',label:'【文字 B】',goodsId:'',enabled:true},{id:'c',label:'不展示',goodsId:'',enabled:false}]}];
+ const parsed=parseWpsParts('101\t1\t旧 CPU 名\n102\t1\t旧散热名',{catalog});
+ assert.deepEqual(importProblems(parsed),[]);assert.deepEqual(parsed.rows.map(r=>r.part.name),['输出表 CPU','输出表散热']);assert.deepEqual(parsed.rows.map(r=>r.part.upgrade),['【仅文字说明】','【文字 A】【文字 B】']);
+});
+
+test('同 ID 两个输出表名称不能随意选，须由准确名称消歧',()=>{
+ const catalog=[{sourceId:'a',goodsId:'101',name:'内存灯条 RGB',originalName:'ERP 原名'},{sourceId:'b',goodsId:'101',name:'内存马甲无光',originalName:'ERP 原名'}];
+ const ambiguous=parseWpsParts('101\t1\tERP 原名',{catalog});assert.match(importProblems(ambiguous).join('；'),/多个配件/);
+ const exact=parseWpsParts('101\t1\t内存马甲无光',{catalog});assert.deepEqual(importProblems(exact),[]);assert.equal(exact.rows[0].part.sourceId,'b');
 });

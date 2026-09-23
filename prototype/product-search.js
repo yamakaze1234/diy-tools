@@ -7,7 +7,7 @@ export function mountProductSearch(root,{getRows,getCosts,idKey='goodsId',select
  if(inputElement){root.insertAdjacentHTML('beforeend',markup.slice(markup.indexOf('<div class="product-picked"')));}else root.innerHTML=markup;
  const input=inputElement||root.querySelector('[data-product-query]'),results=root.querySelector('[data-product-results]'),picked=root.querySelector('[data-product-picked]'),count=root.querySelector('[data-product-count]');
  const selectedRow=()=>getRows().find(r=>String(r[idKey])===value);
- function paint(){const rows=getRows().filter(r=>!r.deletedAt),query=input.value.trim().toLowerCase(),tokens=query.split(/\s+/).filter(Boolean),row=selectedRow();
+ function paint(){const allRows=getRows(),rows=allRows.filter(r=>!r.deletedAt),query=input.value.trim().toLowerCase(),tokens=query.split(/\s+/).filter(Boolean),row=value?allRows.find(r=>String(r[idKey])===value):null;
   picked.innerHTML=`<span>${value?row?`已选：${esc(row.name)} · ${esc(describe(row))}`:`原关联 ${esc(value)}（未找到）`:esc(emptySelection)}</span>${row&&getCosts?componentStockHtml(row,getCosts()):''}${value?'<button type="button" data-product-clear>清除选择</button>':''}`;
   picked.querySelector('[data-product-clear]')?.addEventListener('click',()=>{value='';input.value='';paint();onChange(null);input.focus();});
   if(inputElement&&!searching){results.innerHTML='';count.textContent='';return;}

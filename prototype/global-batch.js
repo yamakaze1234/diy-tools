@@ -1,6 +1,7 @@
 import {mountProductSearch} from './product-search.js';
 import {clone,productGroups} from './core.js';
 import {replaceSourcePart} from './source.js';
+import {actualParts,syncActualParts} from './actual-parts.js';
 import {renderPoster} from './poster.js';
 import {makeZip} from './zip.js';
 
@@ -14,12 +15,50 @@ export function usageGroups(configs,partKey){return productGroups(configs.filter
 export function replacementPlan(configs,partKey,productIds,replacement,qty){
  if(!replacement||replacement.deletedAt)throw Error('请选择新的配件');if(qty!==null&&(!Number.isInteger(qty)||qty<1))throw Error('数量必须是正整数，留空则保留原数量');
  const groups=usageGroups(configs,partKey).filter(g=>productIds.includes(g.id)),changes=[];
- for(const g of groups)for(const c of g.matches){const after=clone(c);for(let i=0;i<after.parts.length;i++)if(key(after.parts[i])===partKey){replaceSourcePart(after,i,replacement);if(qty!==null)after.parts[i].qty=qty;}if(JSON.stringify(c)!==JSON.stringify(after))changes.push({id:c.id,productId:g.id,name:c.name,product:g.name,before:clone(c),after});}
+ for(const g of groups)for(const c of g.matches){const after=clone(c);for(let i=0;i<after.parts.length;i++)if(key(after.parts[i])===partKey){replaceSourcePart(after,i,replacement);if(qty!==null)after.parts[i].qty=qty;}syncActualParts(after,c.parts);if(JSON.stringify(c)!==JSON.stringify(after))changes.push({id:c.id,productId:g.id,name:c.name,product:g.name,before:clone(c),after});}
  return {changes,productIds:groups.map(g=>g.id),replacement:clone(replacement),partKey};
 }
+export function validateReplacement(plan,configs){
+ const byId=new Map(configs.map(c=>[c.id,c]));
+ return plan.changes.map(change=>{const c=byId.get(change.id);if(!c||JSON.stringify(c)!==JSON.stringify(change.before))throw Error('配置已变化，请重新预览');return c;});
+}
 export function applyReplacement(plan,configs){
- const targets=plan.changes.map(change=>{const c=configs.find(c=>c.id===change.id);if(!c||JSON.stringify(c)!==JSON.stringify(change.before))throw Error('配置已变化，请重新预览');return c;});
+ const targets=validateReplacement(plan,configs);
  targets.forEach((c,i)=>Object.assign(c,clone(plan.changes[i].after)));return targets.map(c=>c.id);
+}
+export function upgradeDescriptionPlan(configs,partKey,productIds,description){
+ if(!partKey)throw Error('请选择原配件');
+ const groups=usageGroups(configs,partKey).filter(g=>productIds.includes(g.id)),changes=[];
+ for(const g of groups)for(const c of g.matches){
+  const after=clone(c);
+  for(const part of after.parts)if(key(part)===partKey)part.upgrade=description;
+  if(JSON.stringify(c)!==JSON.stringify(after))changes.push({id:c.id,productId:g.id,name:c.name,product:g.name,before:clone(c),after});
+ }
+ return {changes,partKey,productIds:groups.map(g=>g.id),description};
+}
+export function openUpgradeDescriptionBatch(api){
+ const {openDialog,getConfigs,apply,esc}=api;
+ openDialog('批量修改配件加购描述',`<p class="hint">按原配件查找本店配置，只修改对应配件的逐项升级说明。手动添加的“加购与选配”、实际配置和输出源均保留。</p><label class="field">查找原配件<input id="upgrade-batch-query" placeholder="输入配件名称或 ERP ID"></label><div id="upgrade-batch-candidates" class="global-list"></div><div id="upgrade-batch-work" class="hidden"><div id="upgrade-batch-links" class="global-list"></div><label class="field">新的配件加购描述<textarea id="upgrade-batch-text" rows="3" placeholder="留空可清除所选配件的说明"></textarea></label><div class="actions"><button id="upgrade-batch-preview">预览修改</button><button id="upgrade-batch-apply" class="primary" disabled>应用修改</button></div><pre id="upgrade-batch-diff"></pre></div><p id="upgrade-batch-status" role="status"></p>`);
+ const $=s=>document.querySelector(s);let partKey='',plan=null,busy=false;
+ const invalidate=()=>{plan=null;$('#upgrade-batch-apply').disabled=true;$('#upgrade-batch-diff').textContent='';};
+ $('#upgrade-batch-query').oninput=()=>{invalidate();$('#upgrade-batch-work').classList.add('hidden');const rows=findPartUsage(getConfigs(),$('#upgrade-batch-query').value);$('#upgrade-batch-candidates').innerHTML=rows.slice(0,80).map((r,i)=>`<button data-upgrade-part="${i}"><strong>${esc(r.name)}</strong><small>ERP ID ${esc(r.goodsId||'无')} · ${r.count} 套配置</small></button>`).join('');$('#upgrade-batch-status').textContent=rows.length?'选择要修改描述的原配件':'没有匹配配件';document.querySelectorAll('[data-upgrade-part]').forEach(button=>button.onclick=()=>{const row=rows[Number(button.dataset.upgradePart)];partKey=row.key;const groups=usageGroups(getConfigs(),partKey);$('#upgrade-batch-candidates').innerHTML=`<p class="hint">原配件：${esc(row.name)} · ${esc(row.goodsId||'无 ERP ID')}</p>`;$('#upgrade-batch-links').innerHTML=groups.map(g=>`<label><input type="checkbox" data-upgrade-link value="${esc(g.id)}" checked><span><strong>${esc(g.name)}</strong><small>${g.matches.length} 套命中：${esc(g.matches.map(c=>c.name).join('、'))}</small></span></label>`).join('');$('#upgrade-batch-work').classList.remove('hidden');$('#upgrade-batch-status').textContent=`已找到 ${groups.length} 个链接`;document.querySelectorAll('[data-upgrade-link]').forEach(input=>input.onchange=invalidate);});};
+ $('#upgrade-batch-text').oninput=invalidate;
+ $('#upgrade-batch-preview').onclick=()=>{try{plan=upgradeDescriptionPlan(getConfigs(),partKey,[...document.querySelectorAll('[data-upgrade-link]:checked')].map(input=>input.value),$('#upgrade-batch-text').value);$('#upgrade-batch-diff').textContent=plan.changes.map(change=>{const lines=change.before.parts.filter(part=>key(part)===partKey).map(part=>`${part.slot}：${part.upgrade||'（空）'} → ${plan.description||'（空）'}`);return `${change.product} / ${change.name}\n${lines.join('\n')}`;}).join('\n\n');$('#upgrade-batch-apply').disabled=!plan.changes.length;$('#upgrade-batch-status').textContent=`将修改 ${plan.changes.length} 套配置`; }catch(e){invalidate();$('#upgrade-batch-status').textContent=e.message;}};
+ $('#upgrade-batch-apply').onclick=async()=>{if(!plan||busy)return;try{busy=true;$('#upgrade-batch-apply').disabled=true;validateReplacement(plan,getConfigs());await apply(plan);$('#upgrade-batch-status').textContent=`已保存 ${plan.changes.length} 套配置`;plan=null;}catch(e){$('#upgrade-batch-status').textContent=e.message;}finally{busy=false;}};
+}
+export function replacementDiff(plan){
+ return plan.changes.map(change=>{
+  const rows=[];
+  for(const before of change.before.parts.filter(part=>key(part)===plan.partKey)){
+   const after=change.after.parts.find(part=>part.slot===before.slot);
+   rows.push(`展示配件 · ${before.slot}：${before.name} ×${before.qty} → ${after.name} ×${after.qty}`);
+   const actualBefore=actualParts(change.before).find(part=>part.slot===before.slot);
+   const actualAfter=actualParts(change.after).find(part=>part.slot===before.slot);
+   if(JSON.stringify(actualBefore)!==JSON.stringify(actualAfter))rows.push(`实际配置 · ${before.slot}：${actualBefore?.name||'空'} ×${actualBefore?.qty||0} → ${actualAfter?.name||'空'} ×${actualAfter?.qty||0}`);
+  }
+  if(JSON.stringify(change.before.addons)!==JSON.stringify(change.after.addons))rows.push('关联加购：'+((change.before.addons||[]).map(a=>a.text).join('；')||'无')+' → '+((change.after.addons||[]).map(a=>a.text).join('；')||'无'));
+  return `${change.product} / ${change.name}\n${rows.join('\n')}`;
+ }).join('\n\n');
 }
 const safe=s=>String(s).replace(/[<>:"/\\|?*\x00-\x1f]/g,'_').replace(/[. ]+$/g,'').slice(0,90)||'未命名';
 export function exportEntries(configs,productIds){
@@ -31,9 +70,9 @@ export function exportEntries(configs,productIds){
 
 export function openGlobalBatch(api){
  const {openDialog,esc,toast,getConfigs,getCatalog,apply,save,download}=api;
- openDialog('全局批量修改',`<button id="global-addons">批量修改本店加购描述</button><p class="hint">查询所有链接中使用该配件的配置，勾选链接后统一替换。只修改命中的配件，原数量默认保留。</p><label class="field">查找原配件<input id="global-query" placeholder="输入配件名称或 ERP ID"></label><div id="global-candidates" class="global-list"></div><div id="global-work" class="hidden"><div class="global-toolbar"><strong id="global-summary"></strong><label><input id="global-all" type="checkbox" checked> 全选链接</label></div><div id="global-links" class="global-list"></div><div id="global-product-search"></div><label class="field">统一数量（留空保留各配置原数量）<input id="global-qty" type="number" min="1" step="1" placeholder="保留原数量"></label><label class="global-export"><input id="global-export" type="checkbox"> 修改后自动导出所选链接的全部配置清单图和 1:1 SKU 图（1400px）</label><p class="hint">每个链接一个文件夹；其内按「配置清单图 / SKU图」分开，图片名为 SPU_配置编号.png。沿用各配置的配色和机箱图片。</p><div class="actions"><button id="global-preview">预览统一修改</button><button id="global-apply" class="primary" disabled>应用修改</button></div><div id="global-diff" class="hint"></div></div><p id="global-status" role="status" class="hint"></p><button id="global-retry" class="hidden">重新保存并导出 ZIP</button>`);
+ openDialog('全局批量修改',`<button id="global-addons">批量修改配件加购描述</button><p class="hint">查询所有链接中使用该配件的配置，勾选链接后统一替换。命中的展示配件及其实际配置对应槽位都会更新，原数量默认保留；应用前请核对两处差异。</p><label class="field">查找原配件<input id="global-query" placeholder="输入配件名称或 ERP ID"></label><div id="global-candidates" class="global-list"></div><div id="global-work" class="hidden"><div class="global-toolbar"><strong id="global-summary"></strong><label><input id="global-all" type="checkbox" checked> 全选链接</label></div><div id="global-links" class="global-list"></div><div id="global-product-search"></div><label class="field">统一数量（留空保留各配置原数量）<input id="global-qty" type="number" min="1" step="1" placeholder="保留原数量"></label><label class="global-export"><input id="global-export" type="checkbox"> 修改后自动导出所选链接的全部配置清单图和 1:1 SKU 图（1400px）</label><p class="hint">每个链接一个文件夹；其内按「配置清单图 / SKU图」分开，图片名为 SPU_配置编号.png。沿用各配置的配色和机箱图片。</p><div class="actions"><button id="global-preview">预览统一修改</button><button id="global-apply" class="primary" disabled>应用修改</button></div><div id="global-diff" class="hint"></div></div><p id="global-status" role="status" class="hint"></p><button id="global-retry" class="hidden">重新保存并导出 ZIP</button>`);
  const $=s=>document.querySelector(s),root=$('#global-status');let partKey='',groups=[],plan=null,busy=false,exportIds=null,retryExport=false;
- $('#global-addons').onclick=()=>api.openAddons();
+ $('#global-addons').onclick=()=>api.openUpgrades();
  const dialog=root.closest('dialog'),controller=new AbortController();dialog.addEventListener('cancel',e=>{if(busy)e.preventDefault();},{signal:controller.signal});dialog.addEventListener('close',()=>controller.abort(),{once:true,signal:controller.signal});
  const status=message=>{if(root.isConnected)root.textContent=message;};
  const invalidate=()=>{plan=null;$('#global-apply').disabled=true;$('#global-diff').textContent='';};
@@ -44,9 +83,9 @@ export function openGlobalBatch(api){
  const replacementPicker=mountProductSearch($('#global-product-search'),{getRows:getCatalog,idKey:'sourceId',label:'查找新配件',inputId:'global-new-query',describe:r=>'ERP ID '+r.goodsId+' · 核算 '+(r.tax??'待补'),onChange:invalidate});
  for(const id of ['global-qty','global-export'])$('#'+id).onchange=invalidate;
  const currentReplacement=()=>replacementPicker.row();
- $('#global-preview').onclick=()=>{try{plan=replacementPlan(getConfigs(),partKey,picked(),currentReplacement(),$('#global-qty').value===''?null:Number($('#global-qty').value));if($('#global-export').checked)exportEntries(getConfigs(),plan.productIds);$('#global-diff').textContent=plan.changes.map(c=>{const rows=c.before.parts.flatMap((p,i)=>key(p)===partKey?[`${p.slot}：${p.name} ×${p.qty} → ${c.after.parts[i].name} ×${c.after.parts[i].qty}`]:[]);if(JSON.stringify(c.before.addons)!==JSON.stringify(c.after.addons))rows.push('关联加购：'+(c.before.addons.map(a=>a.text).join('；')||'无')+' → '+(c.after.addons.map(a=>a.text).join('；')||'无'));return `${c.product} / ${c.name}\n${rows.join('\n')}`;}).join('\n\n');$('#global-apply').disabled=!plan.changes.length;status(`将修改 ${plan.changes.length} 套配置${$('#global-export').checked?`，导出所选链接全部 ${exportEntries(getConfigs(),plan.productIds).length} 张图片`:''}。请核对下方差异后应用。`);}catch(e){invalidate();status(e.message);}};
+ $('#global-preview').onclick=()=>{try{plan=replacementPlan(getConfigs(),partKey,picked(),currentReplacement(),$('#global-qty').value===''?null:Number($('#global-qty').value));if($('#global-export').checked)exportEntries(getConfigs(),plan.productIds);$('#global-diff').textContent=replacementDiff(plan);$('#global-apply').disabled=!plan.changes.length;status(`将修改 ${plan.changes.length} 套配置${$('#global-export').checked?`，导出所选链接全部 ${exportEntries(getConfigs(),plan.productIds).length} 张图片`:''}。请核对下方差异后应用。`);}catch(e){invalidate();status(e.message);}};
  const exportZip=async()=>{await save();const entries=exportEntries(getConfigs(),exportIds),files=[],failures=[];for(const [i,entry] of entries.entries()){status(`配置已保存，正在导出 ${i+1}/${entries.length}：${entry.name}`);try{const r=await renderPoster(entry.config,1400);if(r.overflow)throw Error('1:1 图片内容超出，请调整模块或字号');const blob=await new Promise(resolve=>r.canvas.toBlob(resolve,'image/png'));if(!blob)throw Error('图片生成失败');files.push({name:entry.name,bytes:new Uint8Array(await blob.arrayBuffer())});}catch(e){failures.push({name:entry.name,error:e.message});}}if(!files.length)throw Error('全部图片生成失败：'+failures.map(f=>f.error).join('；'));files.push({name:'导出结果.json',bytes:new TextEncoder().encode(JSON.stringify({createdAt:new Date().toISOString(),success:files.map(f=>f.name),failures},null,2))});download(makeZip(files),`批量修改配置图_${Date.now()}.zip`);status(`已保存修改并导出 ${files.length-1} 张图片，失败 ${failures.length} 张。${failures.length?'详情见 ZIP 内导出结果.json。':''}`);};
  const lock=value=>{busy=value;if(root.isConnected){dialog.querySelector('.close').disabled=value;document.querySelectorAll('#dialog-body input,#dialog-body select,#dialog-body button').forEach(el=>el.disabled=value);}};
- $('#global-apply').onclick=async()=>{if(busy||!plan)return;const approved=plan,auto=$('#global-export').checked;try{if(JSON.stringify(currentReplacement())!==JSON.stringify(approved.replacement))throw Error('新配件资料已变化，请重新预览');if(auto)exportEntries(getConfigs(),approved.productIds);applyReplacement(approved,clone(getConfigs()));lock(true);exportIds=approved.productIds;retryExport=auto;await apply(approved);plan=null;if(auto)await exportZip();else status(`已统一修改并保存 ${approved.changes.length} 套配置`);if(root.isConnected){$('#global-retry').classList.toggle('hidden',!auto);$('#global-retry').textContent='再次导出 ZIP';}}catch(e){status(e.message);toast(e.message);if(exportIds&&root.isConnected){$('#global-retry').classList.remove('hidden');$('#global-retry').textContent=retryExport?'重新保存并导出 ZIP':'重新保存修改';}}finally{lock(false);if(root.isConnected)invalidate();}};
+ $('#global-apply').onclick=async()=>{if(busy||!plan)return;const approved=plan,auto=$('#global-export').checked;try{if(JSON.stringify(currentReplacement())!==JSON.stringify(approved.replacement))throw Error('新配件资料已变化，请重新预览');if(auto)exportEntries(getConfigs(),approved.productIds);validateReplacement(approved,getConfigs());lock(true);exportIds=approved.productIds;retryExport=auto;await apply(approved);plan=null;if(auto)await exportZip();else status(`已统一修改并保存 ${approved.changes.length} 套配置`);if(root.isConnected){$('#global-retry').classList.toggle('hidden',!auto);$('#global-retry').textContent='再次导出 ZIP';}}catch(e){status(e.message);toast(e.message);if(exportIds&&root.isConnected){$('#global-retry').classList.remove('hidden');$('#global-retry').textContent=retryExport?'重新保存并导出 ZIP':'重新保存修改';}}finally{lock(false);if(root.isConnected)invalidate();}};
  $('#global-retry').onclick=async()=>{try{lock(true);if(retryExport)await exportZip();else{await save();status('修改已保存');$('#global-retry').classList.add('hidden');}}catch(e){status(e.message);}finally{lock(false);if(root.isConnected)invalidate();}};
 }

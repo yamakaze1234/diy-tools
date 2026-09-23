@@ -1,6 +1,7 @@
 import copy
 import json
 import os
+import sqlite3
 import sys
 import tempfile
 import threading
@@ -57,6 +58,17 @@ class BackendTests(unittest.TestCase):
         self.s.store.set_meta('enabled', True)
         self.s.store.set_meta('workspaceState', self.s.state)
 
+    def test_materialized_records_keep_current_drafts_without_history_fields(self):
+        self.seed_cloud()
+        full = self.s.store.records()
+        drafts = self.s.store.materialized_records()
+        self.assertEqual(len(drafts), len(full))
+        self.assertTrue(all(set(row) == {'type', 'id', 'draft'} for row in drafts))
+        self.assertEqual(
+            self.s.domain('applyWorkspace', self.s.state, drafts),
+            self.s.domain('applyWorkspace', self.s.state, full),
+        )
+
     def test_local_edit_keeps_cloud_queue_until_two_hour_deadline(self):
         self.s.cloud.close()
         self.seed_cloud()
@@ -91,6 +103,22 @@ class BackendTests(unittest.TestCase):
         self.assertIsNone(cloud.begin_cycle())
         cloud.running = False
         self.assertIsNone(cloud.begin_cycle())
+
+    def test_source_save_skips_unedited_config_reads_and_repeated_diff(self):
+        records = self.s.domain('projectWorkspace', self.s.state) + [dict(type='workspace_meta', id='root', data=dict(format=2))]
+        changes = [dict(**r, seq=i+1, version=1, updatedAt=now(), updatedBy='B') for i, r in enumerate(records)]
+        self.s.store.apply_page(dict(ok=True, changes=changes, nextCursor=len(changes), headSeq=len(changes), hasMore=False))
+        self.s.store.set_meta('enabled', True)
+        self.s.store.set_meta('workspaceState', self.s.state)
+        before = copy.deepcopy(self.s.state)
+        after = copy.deepcopy(before)
+        after['sourceCatalog'][0]['name'] = 'updated source name'
+        source_id = after['sourceCatalog'][0]['sourceId']
+        with patch.object(self.s.store, 'get', wraps=self.s.store.get) as get, patch.object(self.s, 'domain', wraps=self.s.domain) as domain:
+            result = self.s.cloud.persist(before, after, before)
+        self.assertFalse(any(call.args[0] == 'configuration' for call in get.call_args_list))
+        self.assertEqual(sum(call.args[0] == 'changesBetween' for call in domain.call_args_list), 1)
+        self.assertEqual(next(row for row in result['sourceCatalog'] if row['sourceId'] == source_id)['name'], 'updated source name')
 
     def test_existing_workspace_login_does_not_start_sync(self):
         self.s.cloud.close()
@@ -278,6 +306,56 @@ class BackendTests(unittest.TestCase):
             self.s.restore({**preview, 'baseRevision': -1}, self.cookie)
         self.s.restore(preview, self.cookie)
         self.assertEqual(self.s.state['configs'][0]['name'], '配置1')
+
+    def test_restore_keeps_current_erp_observations(self):
+        part = self.s.state['configs'][0]['parts'][0]
+        part.update(erp=10, stockAvailable=1)
+        key = self.s.history.record(self.s.state, self.s.scope(), '旧布局')
+        self.s.state['configs'][0]['name'] = '新布局'
+        part.update(erp=20, stockAvailable=2)
+        target = self.s.restore_target(key)
+        self.assertEqual(target['configs'][0]['name'], '配置1')
+        self.assertEqual(target['configs'][0]['parts'][0]['erp'], 20)
+        self.assertEqual(target['configs'][0]['parts'][0]['stockAvailable'], 2)
+        self.assertEqual(self.s.preview_version(key)['counts']['configuration'], 1)
+
+    def test_history_write_error_does_not_block_current_save(self):
+        state = copy.deepcopy(self.s.state)
+        incoming = {**state, 'baseRevision': state['revision'], 'baseState': state}
+        incoming['configs'][0]['name'] = '已保存的修改'
+        with patch.object(self.s.history, 'record', side_effect=sqlite3.OperationalError('history disk error')):
+            result = self.s.update_state(incoming, self.cookie)
+        self.assertEqual(result['state']['configs'][0]['name'], '已保存的修改')
+        self.assertEqual(json.loads((self.local / 'state.json').read_text(encoding='utf-8'))['configs'][0]['name'], '已保存的修改')
+        self.assertIn('history disk error', self.s.history_error)
+
+    def test_batch_addon_validation_rejects_invalid_source_or_config_without_write(self):
+        before = copy.deepcopy(self.s.state)
+        disk = (self.local / 'state.json').read_bytes()
+        for field in ('source', 'config'):
+            incoming = copy.deepcopy(before)
+            incoming.update(baseRevision=before['revision'], baseState=before)
+            if field == 'source':
+                incoming['sourceCatalog'][-1]['addonQty'] = 0
+            else:
+                incoming['configs'][-1]['addons'].append(dict(text='invalid', qty=0))
+            with self.assertRaisesRegex(AppError, '加购数量'):
+                self.s.update_state(incoming, self.cookie)
+            self.assertEqual(self.s.state, before)
+            self.assertEqual((self.local / 'state.json').read_bytes(), disk)
+
+    def test_failure_diagnostics_exclude_error_values(self):
+        from server import record_failure
+        try:
+            raise RuntimeError('synthetic-secret-must-not-appear')
+        except RuntimeError as error:
+            key = record_failure(self.local, error)
+        raw = (self.local / 'runtime/last-error.json').read_text(encoding='utf-8')
+        data = json.loads(raw)
+        self.assertEqual(data['id'], key)
+        self.assertEqual(data['exception'], 'RuntimeError')
+        self.assertTrue(data['frames'])
+        self.assertNotIn('synthetic-secret', raw)
 
     def test_sql_wait_does_not_hold_state_lock(self):
         entered, release = threading.Event(), threading.Event()

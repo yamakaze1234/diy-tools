@@ -49,7 +49,7 @@ try{
  await page.locator('#workspace-tools>summary').click();assert.equal(await page.locator('[data-nav=source]').innerText(),'输出源维护');await page.locator('#workspace-tools>summary').click();
  await page.screenshot({path:path.join(root,'verification/change-doc-main.png')});
  await page.locator('#edit-product').click();await page.screenshot({path:path.join(root,'verification/change-doc-product.png')});await page.locator('#dialog .close').click();
- await page.locator('#workspace-sync').click();await page.locator('#cloud-restore').waitFor();await page.screenshot({path:path.join(root,'verification/change-doc-restore.png')});await page.locator('#dialog .close').click();
+ await page.locator('#workspace-sync').click();await page.locator('#cloud-restore').waitFor();await page.screenshot({path:path.join(root,'verification/change-doc-restore.png')});await page.locator('#cloud-cache').click();await page.getByRole('heading',{name:'清理缓存',exact:true}).waitFor();await page.locator('#cache-clear').waitFor();assert.match(await page.locator('#dialog-body').innerText(),/原始图库、配置、历史版本和登录信息不会清理/);await page.locator('#dialog .close').click();
  for(const width of [1366,1920,900]){await page.setViewportSize({width,height:900});assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'overflow '+width);}
  assert.deepEqual(errors,[]);
  const result={passed:true,directory,checks:['actual config label','expanded costs','product overview and price sync','maintenance export','link installments saved and reloaded','new configs inherit link installment','other links unaffected','history preview and restore with log','source label','responsive layout'],syntheticCloud:true,realCloudWrites:false};

@@ -17,7 +17,7 @@ class Domain:
     def _init(self, root):
         import quickjs
         self.ctx = quickjs.Context()
-        self.ctx.set_memory_limit(512 * 1024 * 1024)
+        self.ctx.set_memory_limit(768 * 1024 * 1024)
         self.ctx.add_callable('_sha256', digest)
         self.ctx.add_callable('_uuid', uid)
         self.ctx.add_callable('_utf8len', lambda value: len(value.encode('utf-8')))

@@ -1,6 +1,8 @@
 """SQLite outbox, three-way merge and version history, compatible with 0.2.21."""
 import json
 import sqlite3
+import zlib
+from pathlib import Path
 from datetime import datetime, timedelta, timezone
 from contextlib import contextmanager
 from common import dumps, digest, now, uid, AppError
@@ -71,6 +73,11 @@ class Store:
 
     def records(self):
         return [self.decode(row) for row in self.db.execute('SELECT * FROM records ORDER BY type,id')]
+
+    def materialized_records(self):
+        """Only current drafts are needed to rebuild the editing state."""
+        return [dict(type=row['type'], id=row['id'], draft=json.loads(row['draft']) if row['draft'] else None)
+                for row in self.db.execute('SELECT type,id,draft FROM records ORDER BY type,id')]
 
     def switch_member(self, workspace, member):
         if not workspace or not member:
@@ -261,58 +268,172 @@ class Store:
 
 
 class History:
+    LIMIT = 5 * 1024 ** 3
+    TRIGGER = 4608 * 1024 ** 2
+
     def __init__(self, path, domain):
+        self.path = Path(path)
         self.domain = domain
         self.db = sqlite3.connect(path, check_same_thread=False, isolation_level=None)
         self.db.row_factory = sqlite3.Row
         self.db.executescript('CREATE TABLE IF NOT EXISTS history_maintenance(key TEXT PRIMARY KEY,value TEXT NOT NULL); PRAGMA journal_mode=WAL; CREATE TABLE IF NOT EXISTS versions(id TEXT PRIMARY KEY,scope TEXT NOT NULL,at TEXT NOT NULL,revision INTEGER NOT NULL,reason TEXT NOT NULL,hash TEXT NOT NULL,content TEXT NOT NULL);')
+        columns = {r['name'] for r in self.db.execute('PRAGMA table_info(versions)')}
+        for name, definition in (('encoding', "TEXT NOT NULL DEFAULT 'json'"), ('name', 'TEXT'), ('pinned', 'INTEGER NOT NULL DEFAULT 0')):
+            if name not in columns:
+                self.db.execute(f'ALTER TABLE versions ADD COLUMN {name} {definition}')
+
+    def bytes_used(self):
+        return sum(p.stat().st_size for p in (self.path, self.path.with_name(self.path.name + '-wal')) if p.exists())
+
+    def stats(self, scope=None):
+        clause, args = ('WHERE scope=?', (scope,)) if scope is not None else ('', ())
+        rows = self.db.execute(f'SELECT count(*) n,coalesce(sum(pinned),0) named FROM versions {clause}', args).fetchone()
+        last = self.db.execute("SELECT value FROM history_maintenance WHERE key='last_cleanup'").fetchone()
+        return dict(bytes=self.bytes_used(), limit=self.LIMIT, count=rows['n'], named=rows['named'], lastCleanup=last[0] if last else None)
+
+    def _protected(self):
+        return 'pinned=1 OR rowid IN (SELECT max(rowid) FROM versions GROUP BY scope)'
+
+    def _delete(self, where, args=()):
+        self.db.execute('BEGIN IMMEDIATE')
+        try:
+            count = self.db.execute(f'DELETE FROM versions WHERE {where} AND NOT ({self._protected()})', args).rowcount
+            self.db.execute('COMMIT')
+            return count
+        except BaseException:
+            self.db.execute('ROLLBACK')
+            raise
+
+    def reclaim(self):
+        # VACUUM cannot run inside a transaction. The live database remains valid
+        # when SQLite cannot reserve the extra temporary disk space.
+        self.db.execute('PRAGMA wal_checkpoint(TRUNCATE)')
+        self.db.execute('VACUUM')
+        return self.bytes_used()
+
+    def cleanup(self, mode='all', scope=None, preview=False, expected=None):
+        if mode not in ('all', '7d', '30d'):
+            raise AppError('清理范围无效')
+        cutoff = {'7d': 7, '30d': 30}.get(mode)
+        where = 'pinned=0'
+        args = []
+        if scope is not None:
+            where += ' AND scope=?'; args.append(scope)
+        if cutoff:
+            where += ' AND julianday(at)<julianday(?)'
+            args.append((datetime.now(timezone.utc) - timedelta(days=cutoff)).isoformat())
+        candidates = [row[0] for row in self.db.execute(f'SELECT id FROM versions WHERE {where} AND NOT ({self._protected()}) ORDER BY rowid', args)]
+        count = len(candidates)
+        signature = digest(candidates)
+        if preview:
+            return dict(count=count, bytes=self.bytes_used(), signature=signature)
+        if expected is not None and signature != expected:
+            raise AppError('历史记录已变化，请重新预览清理范围', 409)
+        before = self.bytes_used()
+        removed = self._delete(where, args)
+        after = self.reclaim() if removed else before
+        return dict(removed=removed, before=before, after=after)
+
+    def _capacity(self, incoming):
+        if self.bytes_used() + incoming < self.TRIGGER:
+            return
+        page_size = self.db.execute('PRAGMA page_size').fetchone()[0]
+        free_bytes = lambda: self.db.execute('PRAGMA freelist_count').fetchone()[0] * page_size
+        while self.bytes_used() - free_bytes() + incoming >= self.TRIGGER:
+            candidate = self.db.execute(f'SELECT rowid FROM versions WHERE NOT ({self._protected()}) ORDER BY rowid LIMIT 1').fetchone()
+            if not candidate:
+                raise AppError('历史空间已满，请在历史数据管理中清理命名版本')
+            self._delete('rowid=?', (candidate[0],))
+        if self.bytes_used() + incoming >= self.TRIGGER:
+            self.reclaim()
+        if self.bytes_used() + incoming >= self.LIMIT:
+            raise AppError('历史空间已满，请清理旧版本')
 
     def record(self, state, scope, reason):
-        self.prune()
         content = dumps(state)
         hashed = digest(content)
         last = self.db.execute('SELECT hash FROM versions WHERE scope=? ORDER BY rowid DESC LIMIT 1', (scope,)).fetchone()
         if last and last[0] == hashed:
-            return
+            return None
+        packed = zlib.compress(content.encode('utf-8'), 6)
+        self._capacity(len(packed) + 4096)
         self.db.execute('BEGIN IMMEDIATE')
         try:
-            self.db.execute('INSERT INTO versions VALUES(?,?,?,?,?,?,?)', (uid(), scope, now(), state.get('revision', 0), reason, hashed, content))
+            key = uid()
+            self.db.execute('INSERT INTO versions(id,scope,at,revision,reason,hash,content,encoding) VALUES(?,?,?,?,?,?,?,?)', (key, scope, now(), state.get('revision', 0), reason, hashed, packed, 'zlib'))
             self.db.execute('COMMIT')
+            return key
         except BaseException:
             self.db.execute('ROLLBACK')
             raise
 
     def prune(self, at=None):
         current = at or datetime.now(timezone.utc)
+        policy = self.db.execute("SELECT value FROM history_maintenance WHERE key='weekly_policy_started'").fetchone()
+        if not policy:
+            self.db.execute("INSERT OR REPLACE INTO history_maintenance VALUES('weekly_policy_started',?)", (current.isoformat(),))
+            self.db.execute("INSERT OR REPLACE INTO history_maintenance VALUES('last_cleanup',?)", (current.isoformat(),))
+            return 0
         last = self.db.execute("SELECT value FROM history_maintenance WHERE key='last_cleanup'").fetchone()
         if last and current - datetime.fromisoformat(last[0]) < timedelta(days=7):
             return 0
-        cutoff = (current - timedelta(days=30)).isoformat()
         self.db.execute('BEGIN IMMEDIATE')
         try:
-            removed = self.db.execute("DELETE FROM versions WHERE julianday(at)<julianday(?) AND rowid NOT IN (SELECT max(rowid) FROM versions GROUP BY scope)", (cutoff,)).rowcount
+            removed = self.db.execute(f'DELETE FROM versions WHERE NOT ({self._protected()})').rowcount
             self.db.execute("INSERT OR REPLACE INTO history_maintenance VALUES('last_cleanup',?)", (current.isoformat(),))
             self.db.execute('COMMIT')
-            return removed
         except BaseException:
             self.db.execute('ROLLBACK')
             raise
+        if removed:
+            self.reclaim()
+        return removed
 
     def list(self, scope):
-        self.prune()
-        return [dict(r) for r in self.db.execute('SELECT id,at,revision,reason FROM versions WHERE scope=? ORDER BY rowid DESC LIMIT 100', (scope,))]
+        return [dict(r) for r in self.db.execute('SELECT id,at,revision,reason,name,pinned FROM versions WHERE scope=? ORDER BY rowid DESC LIMIT 100', (scope,))]
+
+    def name_version(self, state, scope, name):
+        name = str(name or '').strip()
+        if not name or len(name) > 80:
+            raise AppError('版本名称须为 1 至 80 个字符')
+        key = self.record(state, scope, '手动命名版本')
+        if not key:
+            key = self.db.execute('SELECT id FROM versions WHERE scope=? ORDER BY rowid DESC LIMIT 1', (scope,)).fetchone()[0]
+        self.db.execute('UPDATE versions SET name=?,pinned=1 WHERE id=? AND scope=?', (name, key, scope))
+        return key
+
+    def delete_named(self, key, scope):
+        row = self.db.execute('SELECT pinned FROM versions WHERE id=? AND scope=?', (key, scope)).fetchone()
+        if not row or not row[0]:
+            raise AppError('命名版本不存在')
+        latest = self.db.execute('SELECT id FROM versions WHERE scope=? ORDER BY rowid DESC LIMIT 1', (scope,)).fetchone()
+        if latest and latest[0] == key:
+            self.db.execute('UPDATE versions SET pinned=0,name=NULL WHERE id=?', (key,))
+        else:
+            self.db.execute('DELETE FROM versions WHERE id=? AND scope=?', (key, scope))
+            self.reclaim()
+
+    def _content(self, row):
+        try:
+            content = zlib.decompress(row['content']).decode('utf-8') if row['encoding'] == 'zlib' else row['content']
+            if digest(content) != row['hash']:
+                raise ValueError('hash mismatch')
+            return content
+        except (ValueError, zlib.error, UnicodeError) as error:
+            raise AppError('历史版本不存在或校验失败') from error
 
     def get(self, key, scope):
         row = self.db.execute('SELECT * FROM versions WHERE id=? AND scope=?', (key, scope)).fetchone()
-        if not row or digest(row['content']) != row['hash']:
+        if not row:
             raise AppError('历史版本不存在或校验失败')
-        return {**dict(row), 'state': json.loads(row['content'])}
+        content = self._content(row)
+        return {**dict(row), 'content': None, 'state': json.loads(content)}
 
-    def preview(self, key, scope, current):
+    def preview(self, key, scope, current, target=None):
         row = self.get(key, scope)
         if (row['state'].get('erpSync') or {}).get('scope', 'unbound') != (current.get('erpSync') or {}).get('scope', 'unbound'):
             raise AppError('该版本属于不同库存来源，不能整库还原')
-        changes = self.domain('changesBetween', current, row['state'])
+        changes = self.domain('changesBetween', current, target if target is not None else row['state'])
         counts = {}
         for change in changes:
             counts[change['type']] = counts.get(change['type'], 0) + 1

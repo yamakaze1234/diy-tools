@@ -4,6 +4,7 @@ import json
 import shutil
 import zipfile
 from pathlib import Path
+from release_config import configure_local_app
 
 ROOT = Path(__file__).resolve().parent
 
@@ -45,6 +46,12 @@ def package():
         assert z.testzip() is None
         assert not any(name.startswith(app.name + '/data/') for name in z.namelist())
     result = dict(version=build['version'], archive=str(archive), archiveBytes=archive.stat().st_size, archiveSHA256=hashlib.sha256(archive.read_bytes()).hexdigest(), files=len(files), defaultDataDirectory='EXE directory/data', userDataIncluded=False)
+    # Only after sealing the data-free ZIP, restore the maintainer's real routing
+    # in the local EXE directory. Placeholder/absent source config fails closed.
+    if build.get('previousDirectory'):
+        result['localCloudConfig'] = configure_local_app(app, build['previousDirectory'])
+    else:
+        result['localCloudConfig'] = dict(configured=False, reason='需配置正式云端环境后才能切换本机程序')
     (ROOT / 'verification' / ('release-' + build['version'] + '.json')).write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding='utf-8')
     print(json.dumps(result, ensure_ascii=False))
 

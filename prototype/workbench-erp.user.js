@@ -1,11 +1,12 @@
 // ==UserScript==
 // @name         DIY 工作台库存与 ERP 成本同步
 // @namespace    local.diy.workbench
-// @version      0.2.1
+// @version      0.2.3
 // @description  按工作台指令读取库存成本，或刷新指定店铺 SPU 的网店商品并查询明细
 // @match        https://cqzs.3cerp.com/*
 // @grant        GM_xmlhttpRequest
 // @grant        GM_getValue
+// @grant        GM_setClipboard
 // @grant        GM_setValue
 // @grant        GM_registerMenuCommand
 // @grant        unsafeWindow
@@ -72,19 +73,33 @@
  function configureProduct(){const account=prompt('连接商品查询：请输入 ERP 顶栏显示的账号姓名（不是密码）',GM_getValue('diy_product_account',''));if(!account)return;if(!accountVisible(account.trim()))return alert('ERP 顶栏未找到此账号，请先登录并核对');GM_setValue('diy_product_account',account.trim());badge.textContent='工作台商品查询：已设置';tick();}
  badge.onclick=configureProduct;GM_registerMenuCommand('连接商品查询',configureProduct);GM_registerMenuCommand('连接库存与成本同步',configure);
  // Static web clients use the same verified collector without a localhost server.
- async function exportWebSnapshot(){
+ let webReceiver=null;
+ window.addEventListener('message',event=>{
+  if(event.source!==pageWindow.opener||!event.source||event.data?.type!=='diy-erp-connect'||typeof event.data.token!=='string'||!/^[a-f0-9-]{36}$/.test(event.data.token))return;
+  let origin;try{origin=new URL(event.origin);}catch{return;}
+  if(origin.protocol!=='https:'&&!(origin.protocol==='http:'&&['127.0.0.1','localhost'].includes(origin.hostname)))return;
+  webReceiver={source:event.source,origin:event.origin,token:event.data.token,at:Date.now()};
+  webExport.textContent='发送到工作台';
+ });
+ async function exportWebSnapshot(mode='file'){
   if(busy)return alert('正在采集，请稍后再试');
+  const receiver=mode==='direct'?webReceiver:null;
+  if(mode==='direct'&&(!receiver||Date.now()-receiver.at>10000))return alert('请从网页版 ERP 同步中点击“打开 ERP 并接收”');
+  if(receiver&&!confirm('将本次库存与成本发送到工作台：'+receiver.origin+'？'))return;
   let config=GM_getValue('diy_connection',null);if(!config){configure(false);config=GM_getValue('diy_connection',null);}if(!config)return;
   busy=true;
   const verify=()=>{if(warehouse()!==config.depotId||!accountVisible(config.account))throw Error('账号或仓库不匹配，已停止导出');const columns=costColumns();if(!columns.some(c=>c.field===config.costField&&c.header===config.costHeader))throw Error('成本列发生变化，请重新连接');};
   try{verify();const raw=await collectPages(async page=>{verify();badge.textContent=`网页版库存：读取第 ${page+1} 页`;const body=new URLSearchParams({filter:'',depotIds:config.depotId,b_stock:'0',search_category:'',search_out_stock:'0',search_zero_stock:'0',pageSize:'2000',pageIndex:String(page),sortField:'',sortOrder:''});const result=await fetch('/pages/stock/searchDeoptStockList.htm',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/x-www-form-urlencoded; charset=UTF-8','X-Requested-With':'XMLHttpRequest'},body,signal:AbortSignal.timeout(30000)});verify();if(!result.ok||result.redirected||!result.headers.get('content-type')?.includes('json'))throw Error('ERP 登录失效或库存请求失败');return result.json();});
    const rows=normalizeRows(raw,config.costField);verify();if(!rows.length)throw Error('ERP 返回空数据，未导出');
    const snapshot={format:'diy-erp-snapshot-v1',origin:'https://cqzs.3cerp.com',account:config.account,warehouse:'公司大库',depotId:config.depotId,costField:config.costField,costHeader:config.costHeader,capturedAt:new Date().toISOString(),complete:true,total:rows.length,rows};
+   if(mode==='direct'){receiver.source.postMessage({type:'diy-erp-result',token:receiver.token,snapshot},receiver.origin);badge.textContent=`已发送 ${rows.length} 条，请回工作台核对预览并应用`;return;}
+   if(mode==='clipboard'){GM_setClipboard(JSON.stringify(snapshot),'text');badge.textContent=`已复制 ${rows.length} 条，回网页版粘贴并预览`;return;}
    const url=URL.createObjectURL(new Blob([JSON.stringify(snapshot)],{type:'application/json'})),a=document.createElement('a');a.href=url;a.download='ERP库存快照-'+Date.now()+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),10000);badge.textContent=`已导出 ${rows.length} 条，请在网页版 ERP 同步中导入`;
   }catch(e){alert(e.message);badge.textContent='网页版库存：'+e.message;}finally{busy=false;}
  }
- GM_registerMenuCommand('导出轻量网页版库存快照',exportWebSnapshot);
- const webExport=document.createElement('button');webExport.textContent='导出网页版库存';Object.assign(webExport.style,{position:'fixed',right:'18px',bottom:'35px',zIndex:2147483000,padding:'10px 14px',border:'1px solid #8bbef7',borderRadius:'8px',background:'#edf5ff',color:'#164570',cursor:'pointer'});webExport.onclick=exportWebSnapshot;document.body.append(webExport);
+ GM_registerMenuCommand('导出轻量网页版库存快照',()=>exportWebSnapshot('file'));
+ GM_registerMenuCommand('复制轻量网页版库存',()=>exportWebSnapshot('clipboard'));
+ const webExport=document.createElement('button');webExport.textContent='发送到工作台';Object.assign(webExport.style,{position:'fixed',right:'18px',bottom:'35px',zIndex:2147483000,padding:'10px 14px',border:'1px solid #8bbef7',borderRadius:'8px',background:'#edf5ff',color:'#164570',cursor:'pointer'});webExport.onclick=()=>exportWebSnapshot('direct');document.body.append(webExport);
  function local(path,data){return new Promise((resolve,reject)=>GM_xmlhttpRequest({method:'POST',url:'http://127.0.0.1:4178/api/erp-bridge/'+path,headers:{'Content-Type':'application/json','X-DIY-Collector':'workbench-erp-v1'},data:JSON.stringify(data),timeout:25000,onload:r=>{try{const j=JSON.parse(r.responseText);if(r.status!==200)throw Error(j.error||'工作台连接失败');resolve(j);}catch(e){reject(e);}},onerror:()=>reject(Error('请启动本机配置工作台')),ontimeout:()=>reject(Error('工作台连接超时'))}));}
  async function tickProduct(){
   const account=GM_getValue('diy_product_account','')||GM_getValue('diy_connection',null)?.account;

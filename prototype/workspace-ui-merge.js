@@ -32,3 +32,9 @@ export function mergeEditingState(base,local,remote){
  for(const [name,key] of Object.entries(collections)){const b=new Map((base[name]||[]).map(r=>[r[key],r])),l=new Map((local[name]||[]).map(r=>[r[key],r])),r=new Map((remote[name]||[]).map(r=>[r[key],r]));result[name]=[...new Set([...r.keys(),...l.keys(),...b.keys()])].map(id=>merge(b.get(id),l.get(id),r.get(id))).filter(Boolean);}
  result.shopSettings=merge(base.shopSettings,local.shopSettings,remote.shopSettings);return {state:result,conflict};
 }
+// A successful save receipt has already passed the server's concurrency check.
+// Differences introduced by normalization on that receipt are not a second
+// editor. Keep keystrokes made while the request was in flight.
+export function rebaseSavedReceipt(sent,current,receipt){
+ return mergeEditingState(sent,current,receipt).state;
+}

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {linkPartsPlan,scopedPartUsage,linkPartsDiff} from '../link-parts.js';
-import {applyReplacement} from '../global-batch.js';
+import {applyReplacement,validateReplacement} from '../global-batch.js';
 const part=(id,qty=1)=>({slot:'内存',name:'配件'+id,goodsId:id,qty});
 const config=()=>({id:'c',productId:'p',product:'链接',name:'配置1',parts:[part('1')],actualParts:[part('2',2)],addons:[]});
 const row={sourceId:'new',goodsId:'3',name:'新配件'};
@@ -25,4 +25,19 @@ test('添加仅检查所选清单的槽位，全选时同时添加',()=>{
  const plan=linkPartsPlan([c],{scope:{actualParts:true},mode:'add',row,slot:'内存',qty:3});assert.equal(plan.changes[0].after.actualParts[0].qty,3);assert.deepEqual(plan.changes[0].after.parts,c.parts);
  assert.throws(()=>linkPartsPlan([c],{mode:'add',row,slot:'内存',qty:3}),/已有配件/);
  const both=linkPartsPlan([c],{mode:'add',row,slot:'风扇',qty:2});assert.equal(both.changes[0].after.parts.at(-1).qty,2);assert.equal(both.changes[0].after.actualParts.at(-1).qty,2);
+});
+
+test('批量预览快照隔离完整配置，后置冲突阻止整个批次',()=>{
+ const configs=Array.from({length:80},(_,i)=>({...config(),id:'c'+i,modules:[{text:'保留版式'}],custom:{nested:['保留数据']}}));
+ const before=structuredClone(configs);
+ const plan=linkPartsPlan(configs,{mode:'add',row,slot:'风扇',qty:2});
+ assert.deepEqual(configs,before);
+ validateReplacement(plan,configs);
+ assert.deepEqual(configs,before);
+ assert.deepEqual(plan.changes[0].after.modules,before[0].modules);
+ plan.changes[0].after.custom.nested.push('预览副本');
+ assert.deepEqual(configs[0].custom,before[0].custom);
+ configs.at(-1).modules[0].text='预览后编辑';
+ assert.throws(()=>applyReplacement(plan,configs),/配置已变化/);
+ assert.deepEqual(configs[0],before[0]);
 });

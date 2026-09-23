@@ -23,3 +23,19 @@ test('统一视图设置在重新载入后保留，新增配置遵循同一视�
  assert.equal(configs[0].layout,'square');
  assert.equal(state.shopSettings.jonsbo.posterView,undefined);
 });
+
+test('店铺统一主题保留独立配色和业务数据，重新载入后新增配置遵循选择',async()=>{
+ const {applyPosterTheme,shopPalette}=await import('../shops.js');
+ const a={id:'a',shopId:'intel',theme:'dark',palette:{...shopPalette('intel','dark'),background:'#123456'},parts:[{name:'CPU'}],modules:[]};
+ const b={id:'b',shopId:'intel',theme:'light',palette:shopPalette('intel','light'),modules:[]};
+ const deleted={id:'deleted',theme:'dark',deletedAt:'2026-09-23'};
+ const configs=[a,b,deleted],parts=structuredClone(a.parts);
+ assert.deepEqual(applyPosterTheme(configs,'light'),['a']);
+ assert.deepEqual(a.parts,parts);assert.equal(deleted.theme,'dark');
+ assert.deepEqual(applyPosterTheme(configs,'light'),[]);
+ applyPosterTheme(configs,'dark');assert.equal(a.palette.background,'#123456');
+ const state=normalizeWorkspaceState({configs:[],shopSettings:{intel:{coupon:0,posterTheme:'light'}}},[]);
+ assert.equal(state.shopSettings.intel.posterTheme,'light');assert.equal(state.shopSettings.jonsbo.posterTheme,undefined);
+ const fresh={id:'new',shopId:'intel',theme:'dark',modules:[]};
+ applyPosterTheme([fresh],state.shopSettings.intel.posterTheme);assert.equal(fresh.theme,'light');
+});

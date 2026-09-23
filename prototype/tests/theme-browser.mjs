@@ -1,0 +1,17 @@
+import fs from 'node:fs/promises';
+import http from 'node:http';
+import path from 'node:path';
+import assert from 'node:assert/strict';
+import {createRequire} from 'node:module';
+const {chromium}=createRequire(import.meta.url)('C:/Users/d1832/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright');
+const root=path.resolve('prototype');let state=JSON.parse(await fs.readFile('python-desktop/tests/fixtures/state.json','utf8'));
+state.configs=[state.configs[0],{...structuredClone(state.configs[0]),id:'second',name:'配置2'},{...structuredClone(state.configs[0]),id:'other',shopId:'jonsbo',productId:'other',theme:'light'}];
+const server=http.createServer(async(req,res)=>{try{const name=new URL(req.url,'http://localhost').pathname;res.setHeader('Content-Type','application/json');
+if(name==='/api/state'){if(req.method==='POST'){let raw='';for await(const chunk of req)raw+=chunk;const body=JSON.parse(raw);for(const key of ['configs','templates','sourceCatalog','costSource','caseGallery','shopSettings'])state[key]=body[key];state.revision++;state.updatedAt=new Date().toISOString();res.end(JSON.stringify({...state,state}));}else res.end(JSON.stringify(state));return;}
+if(name==='/api/session'){res.end(JSON.stringify({defaultOperator:'test'}));return;}
+if(name==='/catalog.json'){res.end('[]');return;}
+if(name.startsWith('/api/')){res.end('{}');return;}
+if(name==='/workspace-auth.js'){res.setHeader('Content-Type','text/javascript');res.end("export async function workspaceAuth(){return {api:async()=>({signedIn:true,enabled:false,member:{name:'test'}}),renewSession:async()=>{}}} export async function leaveWorkspace(){} export async function lockWorkspace(){} export async function ensureWorkspaceAccess(){} export async function initWorkspaceAuth(){} export async function requireWorkspaceLogin(){}");return;}
+const file=path.resolve(root,'.'+(name==='/'?'/index.html':name));if(!file.startsWith(root+path.sep))throw Error('path');res.setHeader('Content-Type',/\.m?js$/.test(name)?'text/javascript':name.endsWith('.css')?'text/css':name==='/'?'text/html':'application/octet-stream');res.end(await fs.readFile(file));}catch{res.statusCode=404;res.end();}});
+await new Promise(r=>server.listen(0,'127.0.0.1',r));let browser;
+try{browser=await chromium.launch({channel:'chrome',headless:true});const page=await browser.newPage({viewport:{width:1400,height:900}});const errors=[];page.on('pageerror',e=>errors.push(e.message));await page.goto('http://127.0.0.1:'+server.address().port);await page.locator('.image-settings').evaluate(e=>e.open=true);await page.locator('[data-theme="dark"]').click({timeout:10000});await page.waitForTimeout(1800);assert.equal(state.shopSettings.intel.posterTheme,'dark');assert.ok(state.configs.filter(c=>c.shopId==='intel').every(c=>c.theme==='dark'));assert.equal(state.configs.find(c=>c.id==='other').theme,'light');await page.reload();await page.locator('.image-settings').evaluate(e=>e.open=true);await page.locator('[data-theme="dark"].active').waitFor();await page.locator('[data-theme="light"]').click();await page.waitForTimeout(1800);assert.equal(state.shopSettings.intel.posterTheme,'light');assert.ok(state.configs.filter(c=>c.shopId==='intel').every(c=>c.theme==='light'));assert.deepEqual(errors,[]);console.log(JSON.stringify({themeScope:'current shop',saveAndReload:true,darkAndLight:true,errors}));}finally{await browser?.close();await new Promise(r=>server.close(r));}

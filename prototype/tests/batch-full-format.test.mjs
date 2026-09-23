@@ -13,14 +13,37 @@ test('全部格式复制两种版式框尺寸、模块布局和图片变换，�
  source.textTransforms={square:{'header.shop':{x:50,y:40,boxWidth:280,boxHeight:80,scaleX:1,scaleY:1}},long:{'header.shop':{x:30,y:20,boxWidth:450}}};
  source.moduleTransforms={square:{header:{x:30,y:30,width:600,height:150}}};target.moduleTransforms={square:{unique:{x:10,y:500}}};
  source.freeCanvasLayouts={square:{base:700,height:700,density:1}};source.caseTransforms={square:{x:500,y:20,size:150}};source.caseVisible=false;
- source.posterImages=[{id:'source-layer',url:'source-extra.png',transforms:{square:{x:40,y:300,width:100,height:60}}}];target.posterImages=[{id:'target-layer',url:'target-extra.png',transforms:{}}];
+ source.posterImages=[{id:'source-layer',url:'source-extra.png',name:'新增图片',naturalWidth:200,naturalHeight:120,transforms:{square:{x:40,y:300,width:100,height:60}}}];target.posterImages=[{id:'target-layer',url:'target-extra.png',transforms:{}}];
  const content=structuredClone(target);applyPosterStyle(source,target);
  assert.deepEqual(target.textTransforms,source.textTransforms);assert.deepEqual(target.moduleTransforms.square.header,source.moduleTransforms.square.header);assert.equal(target.moduleTransforms.square.unique.y,500);
  assert.deepEqual(target.caseTransforms,source.caseTransforms);assert.equal(target.caseVisible,false);assert.deepEqual(target.freeCanvasLayouts,source.freeCanvasLayouts);
  assert.equal(target.textStyles['header.shop'].text,'目标标题');assert.deepEqual(target.textStyles['header.shop'].ranges,source.textStyles['header.shop'].ranges);assert.equal(target.textStyles['unique.text'].size,18);
  for(const key of ['parts','actualParts','addons','benefits','caseImage','price'])assert.deepEqual(target[key],content[key]);
- assert.equal(target.posterImages[0].url,'target-extra.png');assert.deepEqual(target.posterImages[0].transforms,source.posterImages[0].transforms);
+ assert.equal(target.posterImages[0].url,'target-extra.png');assert.deepEqual(target.posterImages[0].transforms,{});
+ assert.deepEqual(target.posterImages[1],source.posterImages[0]);
+ applyPosterStyle(source,target);assert.equal(target.posterImages.length,2);
+ target.posterImages[1].transforms.square.x=200;assert.equal(source.posterImages[0].transforms.square.x,40);
  target.textTransforms.square['header.shop'].boxWidth=900;assert.equal(source.textTransforms.square['header.shop'].boxWidth,280);
+});
+test('全部格式同步多张新增图片的素材和顺序，相同素材更新位置且不清空目标独有图片',()=>{
+ const source=config('source'),target=config('target');
+ source.posterImages=[
+  {id:'new-a',url:'/uploads/a.png',name:'A',naturalWidth:300,naturalHeight:100,transforms:{long:{x:20,y:30,width:150,height:50}}},
+  {id:'new-b',url:'/uploads/b.png',name:'B',naturalWidth:100,naturalHeight:200,transforms:{square:{x:40,y:50,width:80,height:160}}},
+ ];
+ target.posterImages=[
+  {id:'only-target',url:'/uploads/target.png',transforms:{}},
+  {id:'old-a',url:'/uploads/a.png',name:'旧 A',naturalWidth:300,naturalHeight:100,transforms:{long:{x:0,y:0}}},
+ ];
+ applyPosterStyle(source,target);
+ assert.deepEqual(target.posterImages.map(layer=>layer.url),['/uploads/target.png','/uploads/a.png','/uploads/b.png']);
+ assert.equal(target.posterImages[1].id,'old-a');
+ assert.deepEqual(target.posterImages[1].transforms,source.posterImages[0].transforms);
+ assert.deepEqual(target.posterImages[2],source.posterImages[1]);
+ applyPosterStyle(source,target);
+ assert.equal(target.posterImages.length,3);
+ const colorsOnly=config('colors');applyPosterStyle(source,colorsOnly,{colors:true,format:false});assert.equal(colorsOnly.posterImages,undefined);
+ const chassisOnly=config('chassis');applyPosterStyle(source,chassisOnly,{colors:false,format:false,images:true});assert.equal(chassisOnly.posterImages,undefined);
 });
 test('模块 ID 不同时按模块类型映射文字与位置，清除旧布局后仍保留独有模块',()=>{
  const source=config('s'),target=config('t');source.modules[0].id='source-header';target.modules[0].id='target-header';

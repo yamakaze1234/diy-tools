@@ -5,9 +5,27 @@ import mimetypes
 import re
 import struct
 import threading
+import traceback
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlsplit, unquote
 from common import AppError, atomic, digest, dumps
+
+
+def record_failure(local, error):
+    """Keep only stack locations, never request bodies, locals or error values."""
+    from pathlib import Path
+    from common import now, uid
+    key = uid()
+    try:
+        directory = local / 'runtime'
+        directory.mkdir(exist_ok=True)
+        atomic(directory / 'last-error.json', dumps(dict(
+            id=key, at=now(), exception=type(error).__name__,
+            frames=[dict(file=Path(frame.filename).name, line=frame.lineno, function=frame.name)
+                    for frame in traceback.extract_tb(error.__traceback__)])))
+        return key
+    except Exception:
+        return None  # Diagnostics must not hide the original failure response.
 
 CSP = "default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https://*.tcloudbasegateway.com https://*.tcloudbase.com https://*.cloudbase.net https://*.tencentcloudapi.com; object-src 'none'; base-uri 'self'; frame-src 'none'"
 
@@ -95,18 +113,53 @@ def create_server(service, port=0):
                     return self.send(200, state)
                 if path == '/api/session':
                     return self.send(200, service.session)
+                if path == '/api/cache/preview' and self.command == 'GET':
+                    from cache_cleanup import preview
+                    with service.lock:
+                        return self.send(200, preview(service.local / 'images'))
+                if path == '/api/cache/clear' and self.command == 'POST':
+                    from cache_cleanup import clear
+                    data = self.body()
+                    with service.lock:
+                        try:
+                            result = clear(service.local / 'images', data.get('signature'))
+                        except ValueError as error:
+                            raise AppError(str(error), 409) from error
+                    return self.send(200, result)
                 if path == '/api/products/standard' and self.command == 'GET':
                     with service.lock:
                         result = dict(revision=service.state['revision'], links=service.domain('standardProducts', service.state))
                     return self.send(200, result)
                 if path == '/api/versions' and self.command == 'GET':
                     with service.lock:
+                        service.flush_history()
                         result = dict(versions=service.history.list(service.scope()))
+                    return self.send(200, result)
+                if path == '/api/versions/status' and self.command == 'GET':
+                    with service.lock:
+                        result = {**service.history.stats(service.scope()), 'pending': service.history_pending, 'error': service.history_error}
+                    return self.send(200, result)
+                if path == '/api/versions/name' and self.command == 'POST':
+                    data = self.body()
+                    with service.lock:
+                        service.flush_history()
+                        result = dict(id=service.history.name_version(service.state, service.scope(), data.get('name')))
+                    return self.send(200, result)
+                if path == '/api/versions/delete-named' and self.command == 'POST':
+                    data = self.body()
+                    with service.lock:
+                        service.history.delete_named(data.get('id'), service.scope())
+                    return self.send(200, dict(ok=True))
+                if path == '/api/versions/cleanup' and self.command == 'POST':
+                    data = self.body()
+                    with service.lock:
+                        service.flush_history()
+                        result = service.history.cleanup(data.get('mode'), service.scope(), data.get('preview') is True, data.get('signature'))
                     return self.send(200, result)
                 if path == '/api/versions/preview' and self.command == 'POST':
                     data = self.body()
                     with service.lock:
-                        result = service.history.preview(data.get('id'), service.scope(), service.state)
+                        result = service.preview_version(data.get('id'))
                     return self.send(200, result)
                 if path == '/api/versions/restore' and self.command == 'POST':
                     return self.send(200, service.restore(self.body(), cookie))
@@ -144,9 +197,10 @@ def create_server(service, port=0):
                 return
             except Exception as error:
                 status = error.status if isinstance(error, AppError) else 404 if isinstance(error, FileNotFoundError) else 500
-                message = str(error) if isinstance(error, AppError) else '文件不存在' if status == 404 else '本机处理失败，原数据已保留；请重试'
+                failure_id = record_failure(service.local, error) if status == 500 else None
+                message = str(error) if isinstance(error, AppError) else '文件不存在' if status == 404 else '本机处理失败，当前输入仍保留；请重试'
                 try:
-                    self.send(status, dict(error=message))
+                    self.send(status, dict(error=message, **({'diagnosticId': failure_id} if failure_id else {})))
                 except OSError:
                     pass  # Client disconnected while background operation completed.
 

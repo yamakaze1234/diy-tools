@@ -6,10 +6,12 @@ from datetime import datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
-VERSION = '1.0.6'
+VERSION = '1.0.18'
 
 
 def build():
+    previous_file = ROOT / 'verification' / 'latest-build.json'
+    previous = json.loads(previous_file.read_text(encoding='utf-8')) if previous_file.exists() else {}
     subprocess.run(['node', str(ROOT / 'build-web.mjs')], check=True)
     # Every build has an isolated output directory; PyInstaller never cleans a
     # previous user deliverable in place. Superseded stages can be recycled later.
@@ -23,7 +25,7 @@ def build():
         '--exclude-module', 'tkinter', '--exclude-module', 'PyQt5', '--exclude-module', 'PyQt6', '--exclude-module', 'PySide6',
         str(ROOT / 'main.py')], check=True)
     (ROOT / 'verification').mkdir(exist_ok=True)
-    (ROOT / 'verification' / 'latest-build.json').write_text(json.dumps(dict(version=VERSION, directory=str(dist / name), executable=str(dist / name / (name + '.exe'))), ensure_ascii=False, indent=2), encoding='utf-8')
+    (ROOT / 'verification' / 'latest-build.json').write_text(json.dumps(dict(version=VERSION, directory=str(dist / name), executable=str(dist / name / (name + '.exe')), previousDirectory=previous.get('directory')), ensure_ascii=False, indent=2), encoding='utf-8')
     print(dist, flush=True)
 
 

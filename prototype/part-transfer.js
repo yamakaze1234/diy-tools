@@ -15,7 +15,8 @@ export function pastePartPayload(config,index,payload,catalog){
  const row=catalog.find(r=>r.sourceId===part.sourceId&&r.goodsId===part.goodsId&&r.shopId===config.shopId&&!r.deletedAt);
  if(!row)throw Error('复制的配件尚未绑定有效输出源或已删除，请重新选择配件');
  replaceSourcePart(config,index,row);
- Object.assign(config.parts[index],{name:part.name,upgrade:part.upgrade,warranty:part.warranty,qty:part.qty});
+ Object.assign(config.parts[index],{upgrade:part.upgrade,warranty:part.warranty,qty:part.qty});
+ if(part.displayName)config.parts[index].displayName=part.displayName;
  delete config.parts[index].memoryUpgradeConfirmed;
  if(part.memoryUpgradeConfirmed)config.parts[index].memoryUpgradeConfirmed=part.memoryUpgradeConfirmed;
  config.addons=config.addons.filter(a=>a.sourceId!==row.sourceId);
@@ -24,5 +25,5 @@ export function pastePartPayload(config,index,payload,catalog){
 export function overviewProfits(config,settings){
  const t=totals(config),fee=pricing(config,settings).fee;
  const parts=actualParts(config).filter(p=>p.name||p.goodsId);
- return [['tax',t.taxProfit],['erp',t.erpProfit]].map(([field,value])=>parts.length&&parts.every(p=>isSpecialComponent(p)||p[field]!=null&&Number.isFinite(Number(p[field])))?Math.round((value-fee)*100)/100:null);
+ return [['tax',t.taxProfit],['erp',t.erpProfit]].map(([field,value])=>parts.length&&value!==null&&(field==='erp'||parts.every(p=>isSpecialComponent(p)||p.tax!=null&&Number.isFinite(Number(p.tax))))?Math.round((value-fee)*100)/100:null);
 }

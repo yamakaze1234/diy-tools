@@ -98,6 +98,13 @@ export function switchShopTheme(config,theme){
  return config;
 }
 
+export function applyPosterTheme(configs,theme){
+ if(!['light','dark'].includes(theme))return [];
+ const ids=[];
+ for(const config of configs){if(config.deletedAt||config.theme===theme)continue;switchShopTheme(config,theme);ids.push(config.id);}
+ return ids;
+}
+
 export function applyShopIdentity(config,shopId,{resetAppearance=false}={}){
  const shop=shopById(shopId);config.shopId=shop.id;config.shop=shop.name;config.brandText=shop.brandText;
  if(resetAppearance){
@@ -112,7 +119,7 @@ export function applyShopIdentity(config,shopId,{resetAppearance=false}={}){
 export const DEFAULT_ERP_SHOP_IDS={intel:'76',gigabyte:'32',jonsbo:'33'};
 function normalizeShopSettings(value){
  const legacyCoupon=Number(value?.coupon);
- const result={};for(const shop of shops){const entry=value?.[shop.id];result[shop.id]={coupon:Number.isFinite(Number(entry?.coupon))&&Number(entry.coupon)>=0?Number(entry.coupon):shop.id===SHOP_IDS.intel&&Number.isFinite(legacyCoupon)&&legacyCoupon>=0?legacyCoupon:0};const view=normalizePosterView(entry?.posterView);if(view)result[shop.id].posterView=view;if(typeof entry?.serviceText==='string')result[shop.id].serviceText=entry.serviceText;for(const key of ['erpShopId','erpShopName'])if(typeof entry?.[key]==='string')result[shop.id][key]=entry[key];}
+ const result={};for(const shop of shops){const entry=value?.[shop.id];result[shop.id]={coupon:Number.isFinite(Number(entry?.coupon))&&Number(entry.coupon)>=0?Number(entry.coupon):shop.id===SHOP_IDS.intel&&Number.isFinite(legacyCoupon)&&legacyCoupon>=0?legacyCoupon:0};if(["light","dark"].includes(entry?.posterTheme))result[shop.id].posterTheme=entry.posterTheme;const view=normalizePosterView(entry?.posterView);if(view)result[shop.id].posterView=view;if(typeof entry?.serviceText==='string')result[shop.id].serviceText=entry.serviceText;for(const key of ['erpShopId','erpShopName'])if(typeof entry?.[key]==='string')result[shop.id][key]=entry[key];}
  return result;
 }
 

@@ -24,6 +24,18 @@ class BugfixTests(unittest.TestCase):
             self.s.update_state(second, self.cookie)
         self.assertEqual(caught.exception.status, 409)
 
+    def test_stale_save_same_value_is_not_a_field_conflict(self):
+        base = copy.deepcopy(self.s.state)
+        first = copy.deepcopy(base)
+        first.update(baseRevision=base['revision'], baseState=base)
+        first['configs'][0]['name'] = '双方一致'
+        self.s.update_state(first, self.cookie)
+        second = copy.deepcopy(base)
+        second.update(baseRevision=base['revision'], baseState=base)
+        second['configs'][0]['name'] = '双方一致'
+        result = self.s.update_state(second, self.cookie)
+        self.assertEqual(result['state']['configs'][0]['name'], '双方一致')
+
     def test_recovery_draft_keeps_unsaved_data_when_cloud_token_expired(self):
         import requests, json
         from server import start_server

@@ -1,6 +1,6 @@
 # Python 桌面版
 
-当前源码版本 **1.0.18**。安装入口与版本状态见[项目首页](../README.md)，1.0.6 之后的逐版本变化统一见[更新日志](../RELEASE_NOTES.md)。下方早期版本记录保留为历史参考。
+当前源码版本 **1.0.37**。安装入口与版本状态见[项目首页](../README.md)，1.0.6 之后的逐版本变化统一见[更新日志](../RELEASE_NOTES.md)。下方早期版本记录保留为历史参考。
 
 现有 HTML/CSS 和配置图渲染继续使用。桌面由 Python + pywebview / Windows Edge WebView2 承载，SQL、CloudBase 网络访问、SQLite 同步队列、JSON 文件保存、历史版本、凭据加密和后台调度全部由 Python 实现；运行时不启动 Node 或 Electron。
 
@@ -49,7 +49,7 @@ ERP 成本及可销数仍只在本机保存，SQL 读取后预览确认。人工
 
 给本机升级时，先生成分发 ZIP，再复制旧版 `data` 到新版程序文件夹，并在启动新版前运行 `uv run --project python-desktop --locked python -X utf8 python-desktop/restore_local_config.py <旧版程序文件夹> <新版程序文件夹>`。构建程序只带空白登录模板；这个步骤沿用本机云端登录配置并更新本机校验清单，分发 ZIP 保持空白配置。脚本只接受新版仍为模板或已经与旧版一致的情况，不会覆盖另一份现有配置。
 
-版本：1.0.18。Windows 10/11 x64；使用 Windows Edge WebView2 运行时。分发包不包含当前业务数据、登录令牌或 SQL 账号密码。桌面版只保留账号密码自动填充，关闭并清理其他输入框的浏览器自动填充信息。SQL 未识别 ERP 单价时，配置价格与利润临时使用核算成本，并显示黄色警示；两种价格都缺失时不显示虚假的 ERP 利润。
+版本：1.0.37。Windows 10/11 x64；使用 Windows Edge WebView2 运行时。分发包不包含当前业务数据、登录令牌或 SQL 账号密码。桌面版只保留账号密码自动填充，关闭并清理其他输入框的浏览器自动填充信息。SQL 未识别 ERP 单价时，配置价格与利润临时使用核算成本，并显示黄色警示；两种价格都缺失时不显示虚假的 ERP 利润。
 
 ### 本机升级的发布检查
 
@@ -63,9 +63,11 @@ uv run --project python-desktop --locked python -X utf8 python-desktop/release_c
 
 手工恢复配置时加 `--previous "<旧版程序目录>"`。该命令只输出配置一致性结果，不输出 accessKey 或账号凭据。
 
+若用 PyInstaller 命令单独制作本机候选包，未经过 `package.py`，构建完成后仍是公开示例路由。交付候选前先核实桌面快捷方式实际指向的正式版，调用上面的 `release_config.py <候选目录> --previous <正式版目录>` 只配置本机候选，再运行 `release_config.py <候选目录> --check-against <正式版目录>`。只读检查必须返回 `configured=true`、`matchesPrevious=true`、`functionNameVerified=true`；否则不得称为可登录候选包。不要把此路由写入公开 ZIP，也不要为检查复制或覆盖 `data`。运行中的候选还须重启并完成下面的实际窗口登录验收。
+
 每次发布还必须在实际新版窗口确认登录成功、`/api/state` 返回 200、配置数量与迁移记录一致、页面没有 `Failed to fetch` 或载入失败；使用只读总览检查本次 UI 改动。用户正在编辑时保留窗口和草稿，不为了验收刷新或关闭。若尚未登录，只能报告等待登录验证，不能报告整体验收通过。进程存活、窗口存在、静态 JS 返回 200 和隔离 headless 测试都不能替代这一步。
 
-历史版本在“多人同步 → 历史版本 → 历史数据管理”中查看和清理。普通历史每 7 天清理一次，保留每个工作区最新恢复点；手动命名版本长期保留并计入 5 GiB 历史库上限。连续编辑仍及时保存当前内容，恢复点按编辑阶段生成。旧版明文历史库可在退出工作台后用 `uv run --project python-desktop --locked python -X utf8 python-desktop/compact_history.py <data/versions.sqlite>` 转换；转换工具逐条校验并保留原库。
+历史版本在“多人同步 → 历史版本 → 历史数据管理”中查看和清理。所有本地历史备份统一保留 72 小时，包含普通版本、命名版本、同步备份及程序数据目录内的迁移备份和恢复草稿；启动时及运行期间每分钟检查到期记录。数据库备份记录到期清除，备份文件移入 Windows 回收站。当前在用数据、同步协议记录和用户自行导出的文件不受影响。历史库上限仍为 5 GiB。连续编辑仍及时保存当前内容，恢复点按编辑阶段生成。旧版明文历史库可在退出工作台后用 `uv run --project python-desktop --locked python -X utf8 python-desktop/compact_history.py <data/versions.sqlite>` 转换；转换工具逐条校验并保留原库。
 
 “多人同步 → 本机空间 → 清理缓存”仅统计和清理 `data/images` 中被新版本取代的自动生成 PNG。清理前显示数量与大小，确认后移入 Windows 回收站；每套配置各版式和颜色的最新图保留。原始图片 `data/assets`、配置、备份、历史库、登录缓存和浏览器资料不在清理范围内。
 

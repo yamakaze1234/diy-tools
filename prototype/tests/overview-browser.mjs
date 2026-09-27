@@ -3,7 +3,7 @@ import path from 'node:path';
 import http from 'node:http';
 import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
-const {chromium}=createRequire(import.meta.url)('C:/Users/d1832/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright');
+const {chromium}=createRequire(import.meta.url)(process.env.WORKBENCH_PLAYWRIGHT_MODULE || 'playwright');
 const root=path.resolve('prototype'),out=path.resolve('.verification/overview-20260923');await fs.mkdir(out,{recursive:true});
 const app=await fs.readFile(path.join(root,'app.js'),'utf8'),source=app.slice(app.indexOf('function overviewProfitCell('),app.indexOf('function openMaintenancePrices('));
 const server=http.createServer(async(req,res)=>{try{const name=decodeURIComponent(new URL(req.url,'http://localhost').pathname);if(name==='/'){res.setHeader('Content-Type','text/html; charset=utf-8');res.end('<!doctype html><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/workbench-ui.css"><link rel="stylesheet" href="/workbench-simple.css"><dialog id="dialog" class="overview-dialog"><form><div class="dialog-title"><h2>配置总览</h2><button class="close">×</button></div></form><div id="dialog-body"></div></dialog>');return;}const file=path.resolve(root,'.'+name);if(!file.startsWith(root+path.sep))throw Error('path');res.setHeader('Content-Type',name.endsWith('.css')?'text/css':'text/javascript');res.end(await fs.readFile(file));}catch{res.statusCode=404;res.end();}});

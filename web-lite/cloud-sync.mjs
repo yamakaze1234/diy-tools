@@ -33,6 +33,11 @@ export function applyPage(sync,page){
  if(page.nextCursor!==cursor||(page.hasMore&&!page.changes.length)||(!page.hasMore&&cursor!==page.headSeq))throw Error('云端游标不完整');
  sync.cursor=cursor;
 }
+export function applyCheckpoint(sync,rows,checkpointSeq){
+ if(sync.outbox||!Number.isSafeInteger(checkpointSeq)||checkpointSeq<0||!Array.isArray(rows))throw Error('待确认提交或检查点数据无效');
+ for(const row of rows)receive(sync,row);
+ sync.cursor=checkpointSeq;
+}
 export function acknowledge(sync,result){
  const req=sync.outbox;if(!req)throw Error('缺少待确认提交');
  const {entityType,entityId,after}=req.payload,r=record(sync,entityType,entityId);
@@ -56,19 +61,37 @@ export function resolve(sync,type,id,choice){
 // save is an atomic durable write of the full UI state and sync queue. Every
 // immutable request is saved before network I/O; an uncertain retry reuses it.
 export async function syncCycle({getSync,save,call,upload=true,onProgress=()=>{}}){
+ if(upload&&getSync().outbox){const result=await call(getSync().outbox),sync=copy(getSync());acknowledge(sync,result);await save(sync);}
+ const pull=async()=>{let headSeq;
+ for(let n=0;n<10000;n++){
+  const cursor=getSync().cursor;onProgress('正在拉取更新：'+cursor);
+  const page=await call(envelope('sync.pull',{cursor,limit:100,...(headSeq===undefined?{}:{headSeq})}));
+  if(!page?.ok&&page?.code!=='SNAPSHOT_REQUIRED')throw Error(page?.message||page?.code||'云端拉取失败');
+  if(page.code==='SNAPSHOT_REQUIRED'){
+   let checkpointSeq,after=null;const rows=[];
+   for(let k=0;k<10000;k++){
+    const part=await call(envelope('sync.snapshot',{cursor:after,limit:100,...(checkpointSeq===undefined?{}:{checkpointSeq})}));
+    if(!part.ok||!Number.isSafeInteger(part.checkpointSeq)||!Array.isArray(part.records)||part.hasMore&&(!Array.isArray(part.nextCursor)||part.nextCursor.length!==2||!part.records.length))throw Error(part.message||part.code||'检查点分页无效');
+    checkpointSeq??=part.checkpointSeq;if(checkpointSeq!==part.checkpointSeq)throw Error('检查点已变化，请重新同步');
+    rows.push(...part.records);after=part.nextCursor;onProgress('正在接收检查点：'+(k+1)+' 页');
+    if(!part.hasMore){const sync=copy(getSync());applyCheckpoint(sync,rows,checkpointSeq);await save(sync);headSeq=undefined;break;}
+    if(k===9999)throw Error('检查点分页达到上限');
+   }
+   continue;
+  }
+  if(headSeq!==undefined&&page.headSeq!==headSeq)throw Error('云端分页快照已变化');
+  headSeq??=page.headSeq;const sync=copy(getSync());applyPage(sync,page);await save(sync);
+  if(!page.hasMore)return;
+ }
+ throw Error('本轮数据较多，请继续同步');
+ };
+ await pull();
  if(upload)for(let n=0;n<10000;n++){
   let sync=copy(getSync());let req=sync.outbox;
   if(!req){const r=pending(sync).find(r=>!r.conflict);if(!r)break;req=envelope('sync.push',{mutationId:crypto.randomUUID(),deviceId:sync.deviceId,entityType:r.type,entityId:r.id,baseVersion:r.version,after:copy(r.draft)});sync.outbox=req;await save(sync);}
   onProgress('正在提交修改');const result=await call(req);sync=copy(getSync());acknowledge(sync,result);await save(sync);
  }
  if(getSync().outbox)throw Error('提交结果待确认，请重试原提交');
- let headSeq;
- for(let n=0;n<10000;n++){
-  const cursor=getSync().cursor;onProgress('正在拉取更新：'+cursor);
-  const page=await call(envelope('sync.pull',{cursor,limit:100,...(headSeq===undefined?{}:{headSeq})}));
-  if(headSeq!==undefined&&page.headSeq!==headSeq)throw Error('云端分页快照已变化');
-  headSeq??=page.headSeq;const sync=copy(getSync());applyPage(sync,page);await save(sync);
-  if(!page.hasMore){sync.lastSyncedAt=new Date().toISOString();await save(sync);return;}
- }
- throw Error('本轮数据较多，请继续同步');
+ if(upload)await pull();
+ const sync=copy(getSync());sync.lastSyncedAt=new Date().toISOString();await save(sync);
 }

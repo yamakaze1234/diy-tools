@@ -3,7 +3,7 @@ import http from 'node:http';
 import path from 'node:path';
 import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
-const {chromium}=createRequire(import.meta.url)('C:/Users/d1832/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright');
+const {chromium}=createRequire(import.meta.url)(process.env.WORKBENCH_PLAYWRIGHT_MODULE || 'playwright');
 const root=path.resolve('prototype');let state=JSON.parse(await fs.readFile('python-desktop/tests/fixtures/state.json','utf8'));
 state.configs=[state.configs[0],{...structuredClone(state.configs[0]),id:'second',name:'配置2'},{...structuredClone(state.configs[0]),id:'other',shopId:'jonsbo',productId:'other',theme:'light'}];
 const server=http.createServer(async(req,res)=>{try{const name=new URL(req.url,'http://localhost').pathname;res.setHeader('Content-Type','application/json');

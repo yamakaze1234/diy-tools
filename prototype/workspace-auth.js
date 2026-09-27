@@ -1,3 +1,4 @@
+import {validateLoginConfig,loginErrorMessage} from './login-config.js';
 import cloudbase from './vendor/cloudbase.js';
 import {loginRetention,LOGIN_RETENTION_MS} from './session-retention.js';
 const retention=loginRetention();
@@ -7,6 +8,7 @@ export function workspaceAuth(){
  return contextPromise??=(async()=>{
   const response=await fetch('/api/workspace-sync/config'),config=await response.json();
   if(!response.ok||!config.config)throw Error('未配置云端登录，请联系管理员');
+  validateLoginConfig(config.config);
   const auth=cloudbase.init({...config.config,env:config.config.envId,persistence:'local',auth:{detectSessionInUrl:false}}).auth;
   const api=async(action,data)=>{
    const response=await fetch('/api/workspace-sync/'+action,{signal:AbortSignal.timeout(45000),method:data===undefined?'GET':'POST',headers:{'Content-Type':'application/json','X-DIY-Sync':config.csrf},...(data===undefined?{}:{body:JSON.stringify(data)})});
@@ -66,7 +68,7 @@ export async function requireWorkspaceLogin({resumeUid=null}={}){
  const form=document.querySelector('#startup-login'),message=document.querySelector('#login-message'),button=form.querySelector('button');
  button.disabled=true;button.textContent='登录工作台';
  message.textContent=sessionStorage.getItem('diy-login-notice')||(resumeUid?'登录已失效，请用原账号重新登录，当前编辑已保留。':'使用已开通的成员账号登录');sessionStorage.removeItem('diy-login-notice');
- let context;try{context=await workspaceAuth();}catch(error){message.textContent=error.message;button.disabled=true;throw error;}
+ let context;try{context=await workspaceAuth();}catch(error){message.textContent=loginErrorMessage(error);button.disabled=true;throw error;}
  // A saved SDK token is never sufficient: recheck membership on every startup.
  if(!resumeUid&&retention.valid()){
   signingIn=true;button.disabled=true;message.textContent='正在恢复登录…';
@@ -74,7 +76,7 @@ export async function requireWorkspaceLogin({resumeUid=null}={}){
    const {data,error}=await context.auth.getSession();if(error)throw error;
    if(!data?.session||data.session.user?.is_anonymous)throw Error('保存的登录已失效，请重新登录');
    const status=await context.establishSession({accessToken:data.session.access_token});currentUid=status.member.uid;return status;
-  }catch(error){retention.clear();message.textContent=error.message;}
+  }catch(error){retention.clear();message.textContent=loginErrorMessage(error);}
   finally{signingIn=false;button.disabled=false;}
  }else if(!resumeUid){retention.clear();}
  return new Promise(resolve=>{
@@ -86,7 +88,7 @@ export async function requireWorkspaceLogin({resumeUid=null}={}){
     if(!data?.session||data.session.user?.is_anonymous)throw Error('请使用正式成员账号登录');
     const status=await establishSession({accessToken:data.session.access_token,retainedUntil:Date.now()+LOGIN_RETENTION_MS,...(resumeUid?{resumeUid}:{})});form.elements.password.value='';currentUid=status.member.uid;retention.remember();
     resolve(status);
-   }catch(error){message.textContent=error.message;button.disabled=false;button.textContent='登录工作台';form.elements.password.value='';form.elements.password.focus();}finally{signingIn=false;}
+   }catch(error){message.textContent=loginErrorMessage(error);button.disabled=false;button.textContent='登录工作台';form.elements.password.value='';form.elements.password.focus();}finally{signingIn=false;}
   };
   button.disabled=false;form.elements.username.focus();
  });

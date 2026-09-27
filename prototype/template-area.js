@@ -1,0 +1,16 @@
+import {productGroups} from './core.js';
+import {legacyTemplateConfigs,templateConfigLabel} from './template-library.js';
+
+export function mountTemplateArea({container,configs,active,selected,collapsedProducts,opened,onToggle,onOpenConfig,onDeleteSelected,onDeleteGroup,onAddTemplate,esc}){
+ const rows=legacyTemplateConfigs(configs),legacy=productGroups(rows),picked=rows.filter(config=>selected.has(config.id));
+ const count=legacy.reduce((sum,group)=>sum+group.configs.length,0);
+ const groups=legacy.map(group=>{const expanded=!collapsedProducts.has(group.id);return `<section class="product-group template-legacy-group"><button class="product-toggle" data-template-product-toggle="${esc(group.id)}" aria-expanded="${expanded}"><span>${expanded?'▾':'▸'}</span><strong>${esc(group.name)}</strong><small>${group.configs.length} 套</small></button><button type="button" class="template-group-delete" data-template-group-delete="${esc(group.id)}" aria-label="删除整组 ${esc(group.name)}，共 ${group.configs.length} 套配置">删除整组（${group.configs.length} 套）</button><div ${expanded?'':'hidden'}>${group.configs.map(config=>`<div class="config-item ${active===config.id?'active':''}" data-template-config-id="${esc(config.id)}" tabindex="0" role="button"><input type="checkbox" ${selected.has(config.id)?'checked':''} aria-label="勾选 ${esc(templateConfigLabel(config))}"><div><strong title="${esc(templateConfigLabel(config))}">${esc(templateConfigLabel(config))}</strong><small>${esc(config.parts.find(part=>part.slot==='CPU')?.name||'待配置配件')}</small></div></div>`).join('')}</div></section>`;}).join('');
+ container.insertAdjacentHTML('beforeend',`<section class="template-library-section"><button id="template-section-toggle" type="button" aria-expanded="${opened}"><span>${opened?'▾':'▸'}</span><strong>主机模板</strong><small>${count} 套配置</small></button>${opened?`<div class="template-library-content"><div class="template-library-toolbar"><button id="template-library-add" type="button">＋ 新建模板</button><button id="template-delete-selected" type="button" ${picked.length?'':'disabled'}>删除选中（${picked.length}）</button><small>勾选后可删除，点击配置直接编辑</small></div>${groups||'<p class="hint">将链接分类设为“主机模板”后自动显示在这里。</p>'}</div>`:''}</section>`);
+ container.querySelector('#template-section-toggle').onclick=()=>onToggle();
+ if(!opened)return;
+ container.querySelector('#template-library-add').onclick=onAddTemplate;
+ container.querySelector('#template-delete-selected').onclick=()=>onDeleteSelected(picked.map(config=>config.id));
+ container.querySelectorAll('[data-template-group-delete]').forEach(button=>button.onclick=()=>onDeleteGroup(button.dataset.templateGroupDelete));
+ container.querySelectorAll('[data-template-product-toggle]').forEach(button=>button.onclick=()=>{const id=button.dataset.templateProductToggle;collapsedProducts.has(id)?collapsedProducts.delete(id):collapsedProducts.add(id);onToggle(true);});
+ container.querySelectorAll('[data-template-config-id]').forEach(element=>{const id=element.dataset.templateConfigId;element.onclick=()=>onOpenConfig(id);element.onkeydown=event=>{if(event.target===element&&event.key==='Enter')onOpenConfig(id);};const box=element.querySelector('input');box.onclick=event=>{event.stopPropagation();box.checked?selected.add(id):selected.delete(id);onToggle(true);};});
+}

@@ -51,6 +51,15 @@ def configure_local_app(app, previous):
     return dict(configured=True, matchesPrevious=True)
 
 
+def verify_candidate_config(app, previous):
+    """Read-only handoff gate for a local candidate built outside package.py."""
+    expected = read_config(previous)
+    actual = read_config(app)
+    if expected.get('functionName') != 'workbenchApi' or actual != expected:
+        raise ValueError('候选包登录路由与当前正式版不一致，禁止交付')
+    return dict(configured=True, matchesPrevious=True, functionNameVerified=True)
+
+
 def verify_local_runtime(app):
     app = Path(app)
     expected = read_config(app)
@@ -68,9 +77,14 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('app', type=Path)
     parser.add_argument('--previous', type=Path)
+    parser.add_argument('--check-against', type=Path, help='Read-only handoff check against the current local app')
     parser.add_argument('--verify-running', action='store_true')
     args = parser.parse_args()
-    result = configure_local_app(args.app, args.previous) if args.previous else dict(configured=bool(read_config(args.app)))
+    if args.previous and args.check_against:
+        parser.error('--previous 与 --check-against 不能同时使用')
+    result = (configure_local_app(args.app, args.previous) if args.previous else
+              verify_candidate_config(args.app, args.check_against) if args.check_against else
+              dict(configured=bool(read_config(args.app))))
     if args.verify_running:
         result.update(verify_local_runtime(args.app))
     print(json.dumps(result, ensure_ascii=False))

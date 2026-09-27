@@ -1,0 +1,41 @@
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import assert from 'node:assert/strict';
+import {spawn} from 'node:child_process';
+import {createRequire} from 'node:module';
+import net from 'node:net';
+const root=path.resolve('python-desktop');
+const {chromium}=createRequire(import.meta.url)(path.join(process.env.USERPROFILE,'.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright'));
+const freePort=()=>new Promise(resolve=>{const s=net.createServer();s.listen(0,'127.0.0.1',()=>{const p=s.address().port;s.close(()=>resolve(p));});});
+await fs.mkdir(path.join(root,'.verification'),{recursive:true});
+const directory=await fs.mkdtemp(path.join(root,'.verification/duplicate-order-ui-'));
+const port=await freePort();
+const child=spawn(path.join(root,'.venv/Scripts/python.exe'),['-X','utf8',path.join(root,'tests/desktop_harness.py')],{windowsHide:true,env:{...process.env,DIY_WORKBENCH_PORT:'0',DIY_WORKBENCH_USER_DATA:path.join(directory,'profile'),DIY_WORKBENCH_DATA_DIR:path.join(directory,'data'),DIY_WORKBENCH_DEBUG_PORT:String(port)},stdio:['ignore','pipe','pipe']});
+let logs='';child.stdout.on('data',b=>logs+=b);child.stderr.on('data',b=>logs+=b);
+let browser,page;
+const sdk=`let session=JSON.parse(localStorage.getItem('synthetic-sdk-session')||'null');export default {init(){return {auth:{onAuthStateChange(){},async signInWithPassword(v){session={access_token:v.username,user:{is_anonymous:false}};localStorage.setItem('synthetic-sdk-session',JSON.stringify(session));return{data:{session}};},async getSession(){return{data:{session}}},async signOut(){session=null;return{}}}}}};`;
+try{
+ for(let i=0;i<120;i++){try{if((await fetch(`http://127.0.0.1:${port}/json/version`)).ok)break;}catch{}if(child.exitCode!==null)throw Error('Desktop failed: '+logs);await new Promise(r=>setTimeout(r,250));}
+ browser=await chromium.connectOverCDP(`http://127.0.0.1:${port}`);const context=browser.contexts()[0];page=context.pages()[0]||await context.waitForEvent('page');await page.waitForURL(/^http:\/\/127\.0\.0\.1:/);
+ await page.route('**/vendor/cloudbase.js',r=>r.fulfill({contentType:'text/javascript',body:sdk}));await page.reload();
+ await page.waitForFunction(()=>typeof document.querySelector('#startup-login')?.onsubmit==='function');await page.locator('[name=username]').fill('A');await page.locator('[name=password]').fill('synthetic');await page.locator('#startup-login button').click();await page.locator('#login-screen').waitFor({state:'hidden',timeout:15000});
+ await page.waitForFunction(()=>document.querySelector('[data-config=name]')?.value==='配置1',{timeout:20000});
+ const state=()=>page.evaluate(()=>fetch('/api/state').then(r=>r.json()));
+ const before=await state(),original=before.configs[0];
+ await page.locator('.heading-actions .action-menu > summary').click();
+ await page.locator('#duplicate').click();
+ const response=page.waitForResponse(r=>r.request().method()==='POST'&&r.url().endsWith('/api/state'));
+ await page.locator('#save').click();const receipt=await response;assert.equal(receipt.status(),200,await receipt.text());
+ const after=await state(),newRows=after.configs.filter(c=>!before.configs.some(old=>old.id===c.id));
+ assert.equal(newRows.length,1);const copied=newRows[0];
+ const ids=after.configs.filter(c=>c.productId===original.productId).map(c=>c.id);
+ assert.equal(ids.indexOf(copied.id),ids.indexOf(original.id)+1);
+ assert.equal(copied.name,original.name+' · 副本');assert.equal(copied.skuId,'');
+ await page.reload();await page.locator('#new-product').waitFor();
+ const restored=(await state()).configs.filter(c=>c.productId===original.productId).map(c=>c.id);
+ assert.deepEqual(restored,ids);
+ const visible=await page.locator(`[data-list-product="${original.productId}"] .config-item`).evaluateAll(rows=>rows.map(r=>r.dataset.id));
+ assert.deepEqual(visible,ids);
+ await page.screenshot({path:path.join(directory,'duplicate-order-ui.png')});
+ console.log(JSON.stringify({passed:true,directory,realWindow:true,isolatedData:true,insertedImmediatelyAfterSource:true,saveAndReloadPreserved:true}));
+}finally{if(browser)await browser.close().catch(()=>{});if(child.exitCode===null)child.kill();}

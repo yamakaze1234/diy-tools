@@ -1,5 +1,6 @@
 """Isolated desktop test launcher. Never included in the distribution."""
 import json
+import os
 import sys
 import threading
 import time
@@ -12,6 +13,13 @@ from common import now
 
 records = json.loads((ROOT / 'tests/fixtures/records.json').read_text(encoding='utf-8'))
 records += [dict(type='workspace_meta', id='root', data=dict(format=2))]
+if os.environ.get('DIY_TEST_WEB_CACHED_COST') == '1':
+    for record in records:
+        if record['type'] == 'configuration':
+            record['data'].update(updatedAt=None, posterDesignVersion=1, skuMode='dedicated')
+            for part in record['data']['parts']:
+                if part.get('goodsId') == '123':
+                    part.update(tax=999, taxUpdatedAt='2026-09-01T00:00:00Z')
 changes = [dict(**r, seq=i+1, version=1, updatedAt=now(), updatedBy='synthetic') for i, r in enumerate(records)]
 mutation_results = {}
 guard = threading.Lock()

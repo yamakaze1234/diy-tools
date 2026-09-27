@@ -8,10 +8,10 @@ const source=()=>({sourceId:'cpu',shopId:'intel',name:'245KF',goodsId:'245',erp:
 const costs=[{goodsId:'250',name:'250K Plus',erp:1700,tax:1500},{goodsId:'265',name:'265KF',erp:2000,tax:1900}];
 test('一个原配件多个升级商品合并成一条描述，价格分别检查不累加',()=>{
  const r=source(),a=sourceAddon(r),results=addonCheck(a,costs,[r]);assert.deepEqual(addonChecks(a).map(v=>v.priceCents),[59900,79900]);assert.equal(results.checks.length,2);assert.equal(results.checks[0].fields.find(f=>f.key==='tax').diffCents,9900);assert.equal(results.checks[1].fields.find(f=>f.key==='tax').diffCents,-10100);assert.equal(results.checks[1].needsAdjustment,true);
- const config={id:'c',parts:[{sourceId:'cpu',goodsId:'245'}],addons:[{text:'无关加购'}]};replaceSourcePart(config,0,r);assert.equal(config.addons.length,2);assert.equal(config.addons[1].text,'【+599元升级250K Plus】【+799元升级265KF】');assert.deepEqual(config.addons[1].choices,choices());
+ const config={id:'c',parts:[{sourceId:'cpu',goodsId:'245'}],addons:[{text:'无关加购'}]};replaceSourcePart(config,0,r);assert.equal(config.addons.length,1);assert.equal(config.parts[0].upgrade,'【+599元升级250K Plus】【+799元升级265KF】');assert.deepEqual(r.addonChoices,choices());
 });
-test('仅改变某项商品或加价也能发现差异、同步，取消展示仍保留检查商品',()=>{
- const r=source(),c={id:'c',parts:[{sourceId:'cpu',goodsId:'245'}],addons:[]};replaceSourcePart(c,0,r);r.addonChoices[1].goodsId='250';assert.equal(sourceDiff([c],r,['addon']).length,1);syncSource([c],r,['addon']);assert.equal(c.addons[0].choices[1].goodsId,'250');r.addonChoices[1].enabled=false;syncSource([c],r,['addon']);assert.equal(c.addons[0].text,'【+599元升级250K Plus】');assert.equal(addonChecks(c.addons[0]).length,2);
+test('商品关联保留在输出源，文字变化同步升级说明，取消展示仍保留检查商品',()=>{
+ const r=source(),c={id:'c',parts:[{sourceId:'cpu',goodsId:'245'}],addons:[]};replaceSourcePart(c,0,r);r.addonChoices[1].goodsId='250';assert.equal(sourceDiff([c],r,['addon']).length,0);syncSource([c],r,['addon']);assert.deepEqual(c.addons,[]);r.addonChoices[1].enabled=false;syncSource([c],r,['addon']);assert.equal(c.parts[0].upgrade,'【+599元升级250K Plus】');assert.equal(addonChecks(sourceAddon(r)).length,2);
 });
 test('缺少真实商品或独立价格阻止保存，未知成本不作零',()=>{
  const a=sourceAddon(source());a.choices[1].priceCents=null;assert.throws(()=>validateAddon(a,{required:true,costs}),/加购价/);a.choices[1].priceCents=79900;a.choices[1].goodsId='999';assert.throws(()=>validateAddon(a,{required:true,costs}),/不存在/);assert.equal(addonCheck(a,costs,[source()]).checks[1].severity,'pending');
@@ -38,5 +38,5 @@ test('纯文字加购无需商品和价格，投影往返及配件选用保留�
  assert.equal(r.addonText,'【联系客服升级】');validateAddon(sourceAddon(r),{required:true,costs});
  const state={configs:[],sourceCatalog:[r],templates:[],caseGallery:[],costSource:costs,shopSettings:{}};
  assert.deepEqual(applyWorkspace(state,projectWorkspace(state)).sourceCatalog[0].addonChoices,r.addonChoices);
- const c={parts:[{}],addons:[]};replaceSourcePart(c,0,r);assert.equal(c.addons[0].text,r.addonText);
+ const c={parts:[{}],addons:[]};replaceSourcePart(c,0,r);assert.equal(c.parts[0].upgrade,r.addonText);
 });

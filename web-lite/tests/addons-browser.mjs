@@ -4,7 +4,7 @@ import {fileURLToPath} from 'node:url';
 import assert from 'node:assert/strict';
 import {createDemo} from '../model.mjs';
 const require=createRequire(import.meta.url);
-const {chromium}=require('C:/Users/d1832/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright');
+const {chromium}=require(process.env.WORKBENCH_PLAYWRIGHT_MODULE || 'playwright');
 const out=new URL('../verification/',import.meta.url);await mkdir(out,{recursive:true});
 const browser=await chromium.launch({channel:'chrome',headless:true});
 const context=await browser.newContext({viewport:{width:1600,height:1080}}),page=await context.newPage(),errors=[],checks=[];

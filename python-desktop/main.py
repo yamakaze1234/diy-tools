@@ -11,7 +11,7 @@ from service import Service
 from server import start_server
 from storage_paths import storage_paths, prepare_storage
 
-VERSION = '1.0.18'
+VERSION = '1.0.37'
 
 
 def run():
@@ -81,6 +81,16 @@ def run():
                 closing['busy'] = False
 
         window.expose(WindowAPI().close_ready, WindowAPI().close_failed)
+        from folder_export import FolderExporter
+
+        def authorize_export():
+            if window.get_current_url().rstrip('/') != url:
+                raise RuntimeError('请在工作台页面导出图片')
+            service.cloud.require_login('diy_session=' + (service.cloud.cookie or ''))
+
+        folder_exporter = FolderExporter(
+            lambda: window.create_file_dialog(webview.FileDialog.FOLDER), authorize_export)
+        window.expose(folder_exporter.export_image_folder)
 
         def close_requested():
             if closing['allow']:

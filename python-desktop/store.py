@@ -36,6 +36,9 @@ class Store:
             seq INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT UNIQUE NOT NULL,
             workspace TEXT NOT NULL, at TEXT NOT NULL, actor TEXT NOT NULL,
             changes TEXT NOT NULL)''')
+        self.db.execute('''CREATE TABLE IF NOT EXISTS batch_receipts(
+            operation_id TEXT PRIMARY KEY, request_hash TEXT NOT NULL,
+            receipt TEXT NOT NULL, created_at INTEGER NOT NULL DEFAULT (strftime('%s','now')))''')
         self.cache = None
         if not self.meta('deviceId'):
             self.set_meta('deviceId', uid())
@@ -87,7 +90,7 @@ class Store:
                 raise AppError('此账号不属于当前工作区，请使用当前工作区的成员账号')
             if self.meta('uid') and self.meta('uid') != member:
                 status = self.status()
-                if any(status[k] for k in ('pending', 'uncertain', 'conflicts')):
+                if self.meta('enabled') and any(status[k] for k in ('pending', 'uncertain', 'conflicts')):
                     raise AppError('原账号还有未同步修改或冲突，请先用原账号登录并完成同步，再切换账号')
                 self.backup()
             self.set_meta('workspaceId', workspace)
@@ -107,24 +110,42 @@ class Store:
         records = [{**dict(r), 'actor': json.loads(r['actor']), 'changes': json.loads(r['changes'])} for r in rows[:50]]
         return dict(records=records, nextBefore=records[-1]['seq'] if len(rows) > 50 else None)
 
-    def edit_many(self, changes, state=None, actor=None):
+    def batch_receipt(self, operation_id):
+        row = self.db.execute('SELECT request_hash,receipt FROM batch_receipts WHERE operation_id=?', (operation_id,)).fetchone()
+        return (row['request_hash'], json.loads(row['receipt'])) if row else None
+
+    def put_batch_receipt(self, operation_id, request_hash, receipt):
+        self.db.execute('INSERT INTO batch_receipts(operation_id,request_hash,receipt) VALUES(?,?,?)', (operation_id, request_hash, dumps(receipt)))
+        # Keep operation IDs forever for replay safety, but discard bulky
+        # response bodies after the browser retry window.
+        self.db.execute('UPDATE batch_receipts SET receipt=? WHERE created_at<? AND receipt<>?',
+                        ('{"expired":true}', int(datetime.now(timezone.utc).timestamp()) - 7 * 86400, '{"expired":true}'))
+
+    def edit_many(self, changes, state=None, actor=None, shared_cost_ids=None, prepared=False, receipt=None, replace=False, clear_first=False, enable_sync=False):
         with self.transaction():
             audit = []
-            for change in changes:
+            if clear_first:
+                self.db.execute('DELETE FROM outbox')
+                self.db.execute('DELETE FROM records')
+                self.db.execute('UPDATE batch_receipts SET receipt=?', ('{"expired":true}',))
+                self.cache = None
+            existing = [self.get(change['type'], change['id']) for change in changes]
+            ready = changes if prepared else self.domain('validateAndMergeChanges', changes, [None] * len(changes) if replace else existing, sorted(shared_cost_ids) if shared_cost_ids is not None else None) if changes else []
+            for change, row in zip(ready, existing):
                 kind, key, data = change['type'], change['id'], change['data']
-                row = self.get(kind, key)
-                if 'expectedDraft' in change and row:
-                    merged = self.domain('mergeRecord', change['expectedDraft'], data, row['draft'])
-                    if merged['fields']:
-                        raise AppError('编辑期间同一字段已变化：' + '、'.join(merged['fields']), 409)
-                    data = merged['value']
-                self.domain('validateWorkspaceRecord', kind, key, data)
-                audit.append(dict(type=kind, id=key, before=row['draft'] if row else change.get('expectedDraft'), after=data))
+                audit.append(dict(type=kind, id=key, before=change.get('localBefore', change.get('expectedDraft')) if replace else row['draft'] if row else change.get('expectedDraft'), after=data))
                 self.db.execute('INSERT INTO records(type,id,base,version,draft) VALUES(?,?,?,0,?) ON CONFLICT(type,id) DO UPDATE SET draft=excluded.draft', (kind, key, 'null', dumps(data)))
             if state is not None:
-                self.set_meta('workspaceState', state() if callable(state) else state)
+                snapshot = state() if callable(state) else state
+                self.set_meta('workspaceState', snapshot)
+                self.set_meta('localWorkspaceRevision', snapshot['revision'])
             if actor is not None:
                 self.log_local(audit, actor)
+            if receipt is not None:
+                self.put_batch_receipt(*receipt)
+                self.set_meta('batchWorkspaceRevision', receipt[2]['revision'])
+            if enable_sync:
+                self.set_meta('enabled', True)
 
     def next_batch(self):
         with self.transaction():
@@ -286,6 +307,7 @@ class History:
         return sum(p.stat().st_size for p in (self.path, self.path.with_name(self.path.name + '-wal')) if p.exists())
 
     def stats(self, scope=None):
+        self.prune()
         clause, args = ('WHERE scope=?', (scope,)) if scope is not None else ('', ())
         rows = self.db.execute(f'SELECT count(*) n,coalesce(sum(pinned),0) named FROM versions {clause}', args).fetchone()
         last = self.db.execute("SELECT value FROM history_maintenance WHERE key='last_cleanup'").fetchone()
@@ -350,6 +372,7 @@ class History:
             raise AppError('历史空间已满，请清理旧版本')
 
     def record(self, state, scope, reason):
+        self.prune()
         content = dumps(state)
         hashed = digest(content)
         last = self.db.execute('SELECT hash FROM versions WHERE scope=? ORDER BY rowid DESC LIMIT 1', (scope,)).fetchone()
@@ -369,17 +392,9 @@ class History:
 
     def prune(self, at=None):
         current = at or datetime.now(timezone.utc)
-        policy = self.db.execute("SELECT value FROM history_maintenance WHERE key='weekly_policy_started'").fetchone()
-        if not policy:
-            self.db.execute("INSERT OR REPLACE INTO history_maintenance VALUES('weekly_policy_started',?)", (current.isoformat(),))
-            self.db.execute("INSERT OR REPLACE INTO history_maintenance VALUES('last_cleanup',?)", (current.isoformat(),))
-            return 0
-        last = self.db.execute("SELECT value FROM history_maintenance WHERE key='last_cleanup'").fetchone()
-        if last and current - datetime.fromisoformat(last[0]) < timedelta(days=7):
-            return 0
         self.db.execute('BEGIN IMMEDIATE')
         try:
-            removed = self.db.execute(f'DELETE FROM versions WHERE NOT ({self._protected()})').rowcount
+            removed = self.db.execute('DELETE FROM versions WHERE julianday(at)<=julianday(?)', ((current - timedelta(days=3)).isoformat(),)).rowcount
             self.db.execute("INSERT OR REPLACE INTO history_maintenance VALUES('last_cleanup',?)", (current.isoformat(),))
             self.db.execute('COMMIT')
         except BaseException:
@@ -390,6 +405,7 @@ class History:
         return removed
 
     def list(self, scope):
+        self.prune()
         return [dict(r) for r in self.db.execute('SELECT id,at,revision,reason,name,pinned FROM versions WHERE scope=? ORDER BY rowid DESC LIMIT 100', (scope,))]
 
     def name_version(self, state, scope, name):
@@ -426,6 +442,8 @@ class History:
         row = self.db.execute('SELECT * FROM versions WHERE id=? AND scope=?', (key, scope)).fetchone()
         if not row:
             raise AppError('历史版本不存在或校验失败')
+        if datetime.fromisoformat(row['at'].replace('Z', '+00:00')) <= datetime.now(timezone.utc) - timedelta(days=3):
+            raise AppError('历史版本已超过 3 天保留期限')
         content = self._content(row)
         return {**dict(row), 'content': None, 'state': json.loads(content)}
 

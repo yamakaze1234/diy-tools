@@ -87,7 +87,7 @@ export function planStandardProduct(input,state,product,options={}){
    if(!Number.isSafeInteger(detail.n))errors.push(`SKU ${skuId} 配件数量过大`);
    const cost=costs.find(p=>p.goodsId===detail.goods_id);
    if(excludedComponent(cost)||excludedComponent({name:detail.商品名称,originalName:detail.简称}))errors.push(`SKU ${skuId} 含已禁用的带星号配件 ${detail.goods_id}`);
-   parts.push({...preferred?sourcePart(preferred):{name:detail.简称||detail.商品名称||detail.goods_id,goodsId:detail.goods_id,erp:cost?.erp??null,tax:cost?.tax??null,warranty:'',upgrade:''},slot,qty:detail.n});
+   parts.push({...preferred?sourcePart(preferred):{name:detail.简称||detail.商品名称||detail.goods_id,goodsId:detail.goods_id,erp:cost?.erp??null,tax:cost?.tax??null,upgrade:''},slot,qty:detail.n});
   }
   if(!parts.length)warnings.push(`${skuId}：未返回配件明细，${existing?'保留原实际配置':'新增后需补充配件'}`);
   if(!existing&&(!options.prices||sku.SKU价格===null))warnings.push(`${skuId}：新增配置的到手价暂为 0，请勾选更新价格或导入后补填`);

@@ -1,5 +1,10 @@
 import {slots,clone} from './core.js';
-import {sourceUpgradeDescription} from './source.js';
+import {sourcePart,sourceUpgradeDescription} from './source.js';
+import {isSpecialComponent} from './special-components.js';
+
+// Spreadsheet formatting and the older no-GPU wording refer to the same preset.
+// Match only named shop sources, never infer zero cost from a broad keyword.
+const specialName=value=>String(value||'').normalize('NFKC').toLowerCase().replace(/[\s，,。.!！:：;；、]/g,'').replace(/^不含显卡可咨询客服加装显卡使用$/,'不含显卡可咨询客服加装独显使用');
 
 // WPS/Excel clipboard text uses tabs, quoted multiline cells and doubled quotes.
 export function clipboardRows(text){
@@ -55,6 +60,7 @@ export function parseWpsParts(text,{catalog=[],costSource=[],configs=[],format='
  result.quantity=width===3?'第二列':full?'E':quantity==='auto'?autoQty:quantity;
  begin(0,fixed19);
  const sourceById=new Map(),costById=new Map(costSource.map(c=>[String(c.goodsId),c]));
+ const specialSources=catalog.filter(c=>!c.deletedAt&&isSpecialComponent(c));
  for(const row of catalog.filter(c=>!c.deletedAt)){const key=String(row.goodsId);if(!sourceById.has(key))sourceById.set(key,[]);sourceById.get(key).push(row);}
  const knownById=new Map();for(const c of configs.filter(c=>!c.deletedAt))for(const p of c.parts){if(!knownById.has(p.goodsId))knownById.set(p.goodsId,new Set());knownById.get(p.goodsId).add(p.slot);}
  for(const [recordIndex,record] of records.entries()){
@@ -67,22 +73,27 @@ export function parseWpsParts(text,{catalog=[],costSource=[],configs=[],format='
   const offset=recordIndex-start,id=field(record,idIndex).replace(/^'/,''),rawQty=field(record,full?4:width===3?1:result.quantity==='E'?1:2),name=field(record,nameIndex),hint=field(record,hintIndex);
   if(structured&&offset===1&&empty(name)&&!category(hint)){skip('summary');continue;}
   if(empty(name)){skip('placeholder');continue;}
-  if(!/^\d{1,20}$/.test(id)){group.errors.push(`第 ${line} 行：goods ID 应为完整数字，请勿使用科学计数法`);continue;}
+  const specialMatches=!id||/^0+$/.test(id)?specialSources.filter(c=>[c.name,c.originalName].some(n=>n&&specialName(n)===specialName(name))):[];
+  if(specialMatches.length>1){group.errors.push(`第 ${line} 行：名称对应多个特殊配件，请先在本店输出源中确认唯一名称`);continue;}
+  const special=specialMatches[0];
+  if(!/^\d{1,20}$/.test(id)&&!(special&&!id)){group.errors.push(`第 ${line} 行：goods ID 应为完整数字，请勿使用科学计数法`);continue;}
   const qty=Number(rawQty);if(!rawQty||!Number.isSafeInteger(qty)||qty<1){group.errors.push(`第 ${line} 行：数量必须为正整数`);continue;}
-  const goodsId=/^0+$/.test(id)?'':id,choices=sourceById.get(goodsId)||[],exact=choices.filter(c=>c.name===name||c.originalName===name),source=exact.length===1?exact[0]:choices.length===1?choices[0]:null;
+  const goodsId=/^0+$/.test(id)?'':id,choices=sourceById.get(goodsId)||[],exact=choices.filter(c=>c.name===name||c.originalName===name),source=special||(exact.length===1?exact[0]:goodsId&&choices.length===1?choices[0]:null);
   const known=knownById.get(goodsId),positionKind=structured&&offset>=2&&offset<=9?coreSlots[offset-2]:structured&&offset>=11&&offset<=16?(offset===11?'风扇':'配件'):'';
   if(goodsId&&choices.length>1&&!source)group.errors.push(`第 ${line} 行：输出表中该 goods ID 对应多个配件，请在 WPS 中填写准确的输出表名称`);
-  const kind=category(hint)||positionKind||category(name)||(known?.size===1?[...known][0]:'');
+  const kind=category(hint)||positionKind||category(name)||(special?'配件':known?.size===1?[...known][0]:'');
   let slot=kind;const notes=[];
   if(kind==='配件'||used.has(kind)&&['风扇','硬盘','内存'].includes(kind)){slot=slots.find(s=>s.startsWith('配件')&&!used.has(s))||'';if(kind!=='配件')notes.push(`第二项${kind}放入 ${slot||'待分配槽位'}`);}
   used.add(slot);
   const cost=costById.get(goodsId),erp=validPrice(cost?cost.erp:source?.erp),tax=validPrice(cost?cost.tax:source?.tax);
-  if(!goodsId)notes.push('原 ID 为 0，保留名称，不绑定配件 ID');
+  if(special)notes.push('已自动匹配本店特殊配件，ERP 与核算成本均为 0');
+  else if(!goodsId)notes.push('原 ID 为 0，保留名称，不绑定配件 ID');
   else if(!source&&!cost)notes.push('未匹配本地成本，保留原 ID 与名称，成本待补');
   else if(choices.length>1&&!source)notes.push('同 ID 有多条输出源，未自动绑定展示资料');
   else if(source&&source.name!==name)notes.push('已按本店输出表名称替换 WPS 名称');
   if(goodsId&&(erp===null||tax===null))notes.push('部分成本缺失');
-  const part={slot,goodsId,qty,name:source?.name||name,erp,tax,warranty:source?.warranty||'',upgrade:source?sourceUpgradeDescription(source):''};if(source)part.sourceId=source.sourceId;
+  const part={slot,goodsId,qty,name:source?.name||name,erp,tax,upgrade:source?sourceUpgradeDescription(source):''};if(source)part.sourceId=source.sourceId;
+  if(special)Object.assign(part,sourcePart(special),{upgrade:sourceUpgradeDescription(special)});
   const row={line,part,notes};group.rows.push(row);result.rows.push(row);
  }
  finish();

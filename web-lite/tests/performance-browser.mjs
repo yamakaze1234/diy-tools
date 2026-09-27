@@ -4,7 +4,7 @@ import {createDemo} from '../model.mjs';
 import {initializeSources} from '../addon-model.mjs';
 import assert from 'node:assert/strict';
 const require=createRequire(import.meta.url);
-const {chromium}=require('C:/Users/d1832/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright');
+const {chromium}=require(process.env.WORKBENCH_PLAYWRIGHT_MODULE || 'playwright');
 const baseline=process.argv.includes('--baseline');
 const browser=await chromium.launch({channel:'chrome',headless:true});
 try{

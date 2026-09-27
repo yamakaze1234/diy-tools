@@ -15,7 +15,7 @@ export function pastePartPayload(config,index,payload,catalog){
  const row=catalog.find(r=>r.sourceId===part.sourceId&&r.goodsId===part.goodsId&&r.shopId===config.shopId&&!r.deletedAt);
  if(!row)throw Error('复制的配件尚未绑定有效输出源或已删除，请重新选择配件');
  replaceSourcePart(config,index,row);
- Object.assign(config.parts[index],{upgrade:part.upgrade,warranty:part.warranty,qty:part.qty});
+ Object.assign(config.parts[index],{upgrade:part.upgrade,qty:part.qty});
  if(part.displayName)config.parts[index].displayName=part.displayName;
  delete config.parts[index].memoryUpgradeConfirmed;
  if(part.memoryUpgradeConfirmed)config.parts[index].memoryUpgradeConfirmed=part.memoryUpgradeConfirmed;

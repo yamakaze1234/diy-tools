@@ -1,21 +1,42 @@
+import {normalizePosterDesign} from './poster-design.js';
 import {allConfigParts} from './actual-parts.js';
 import {isSpecialComponent,normalizeSpecialComponent} from './special-components.js';
 import {stripLocalErp,localErpFields} from './local-erp-policy.mjs';
 import {restoreConfigOrder} from './config-order.js';
 import {createHash} from 'node:crypto';
-import {equal,recordKey} from '../shared/sync/protocol.mjs';
+import {equal,recordKey,mergeRecord} from '../shared/sync/protocol.mjs';
 const copy=v=>structuredClone(v);
 export const hash=v=>createHash('sha256').update(typeof v==='string'?v:JSON.stringify(v)).digest('hex');
 const derived=['erp','tax','stockAvailable','stockUpdatedAt','erpUpdatedAt','erpMissing','erpUnknown','taxUpdatedAt'];
 const strip=row=>{const r=stripLocalErp(row);for(const k of derived)delete r[k];return r;};
 const cents=v=>v==null?null:Math.round(v*100);
+const configurationLocalFields=['deletionSessionId','updatedAt','taxUpdatedAt','erpImportedAt'];
+// Web/legacy records may still carry per-part cost caches. Compare the stored
+// draft in the editor baseline's projection, while retaining atomic part edits.
+// Only normalize the remote side: removing a shared cost can intentionally put
+// a fallback price back into the new local record.
+export function mergeWorkspaceEdit(type,base,local,remote,sharedCostIds=[]){
+ const ids=new Set(sharedCostIds);let current=copy(remote);
+ // Compare the same persisted projection as the editor. Web copies can carry
+ // updatedAt:null; it is metadata, not a concurrent business edit or deletion.
+ if(current&&type==='configuration'){
+  for(const key of configurationLocalFields)delete current[key];
+  // The editor materializes legacy layout defaults on load. Compare the stored
+  // record in that same projection before checking an atomic deletion.
+  if(base?.posterDesignVersion===1&&current.posterDesignVersion==null)normalizePosterDesign(current);
+ }
+ if(current&&type==='configuration'&&!current.deletedAt){
+  for(const field of ['parts','actualParts'])if(Array.isArray(current[field]))current[field]=current[field].map(p=>ids.has(p.goodsId)?strip(p):p);
+ }else if(current&&type==='source'&&ids.has(current.goodsId))current=strip(current);
+ return mergeRecord(base,local,current);
+}
 export function projectWorkspace(state,configurationOnly=false,selected=null){
  const records=[],scope=state.sharedCostScope||state.erpSync?.scope||'unbound',seen=new Set(),componentIds=new Set((state.costSource||[]).map(c=>c.goodsId));
  const wanted=(type,id)=>!selected||selected[type]===null||selected[type].has(id);
  const add=(type,id,data)=>{const key=recordKey(type,id);if(seen.has(key))throw Error('重复记录 ID：'+id);seen.add(key);records.push({type,id,data:stripLocalErp(data)});};
  // Product grouping can change array positions without changing the saved order.
  // Keep that order in the edit baseline so deletion does not look concurrent.
- for(const [index,c] of (state.configs||[]).entries()){if(!wanted('configuration',c.id))continue;const d=copy(c);d.workspaceOrder=Number.isFinite(c.workspaceOrder)?c.workspaceOrder:index;d.priceCents=cents(d.price);delete d.price;for(const k of ['deletionSessionId','updatedAt','taxUpdatedAt','erpImportedAt'])delete d[k];for(const field of ['parts',...(Array.isArray(d.actualParts)?['actualParts']:[])])d[field]=d[field].map((p,i)=>({...(!componentIds.has(p.goodsId)||c.deletedAt?copy(p):strip(p)),lineId:p.lineId||'line-'+hash(field==='parts'?[c.id,i,p.slot]:[c.id,field,i,p.slot]).slice(0,24)}));add('configuration',c.id,d);}
+ for(const [index,c] of (state.configs||[]).entries()){if(!wanted('configuration',c.id))continue;const d=copy(c);d.workspaceOrder=Number.isFinite(c.workspaceOrder)?c.workspaceOrder:index;d.priceCents=cents(d.price);delete d.price;for(const k of configurationLocalFields)delete d[k];for(const field of ['parts',...(Array.isArray(d.actualParts)?['actualParts']:[])])d[field]=d[field].map((p,i)=>({...(!componentIds.has(p.goodsId)||c.deletedAt?copy(p):strip(p)),lineId:p.lineId||'line-'+hash(field==='parts'?[c.id,i,p.slot]:[c.id,field,i,p.slot]).slice(0,24)}));add('configuration',c.id,d);}
  if(configurationOnly)return records;
  for(const c of state.costSource||[])if(wanted('component',c.goodsId)&&(!c.localInventoryOnly||c.tax!=null))add('component',`${scope}|${c.goodsId}`,{erpScopeId:scope,goodsId:c.goodsId,name:c.name,taxCents:cents(c.tax)});
  for(const s of state.sourceCatalog||[])if(wanted('source',s.sourceId))add('source',s.sourceId,componentIds.has(s.goodsId)?strip(s):copy(s));
@@ -25,7 +46,8 @@ export function projectWorkspace(state,configurationOnly=false,selected=null){
  return records;
 }
 export function applyWorkspace(template,records){
- const next=copy(template),groups=new Map();for(const r of records){if(!groups.has(r.type))groups.set(r.type,[]);groups.get(r.type).push(r);}
+ const {configs:oldConfigs,templates:oldTemplates,sourceCatalog:oldSources,caseGallery:oldGallery,shopSettings:oldSettings,costSource:oldCosts,...metadata}=template;
+ const next=copy(metadata),groups=new Map();for(const r of records){if(!groups.has(r.type))groups.set(r.type,[]);groups.get(r.type).push(r);}
  const values=type=>(groups.get(type)||[]).map(r=>stripLocalErp(r.draft??r.data));
  next.configs=values('configuration').map(d=>{d.price=d.priceCents/100;delete d.priceCents;return d;});
  const previous=new Map((template.configs||[]).map((c,i)=>[c.id,i]));next.configs.sort((a,b)=>(a.workspaceOrder??previous.get(a.id)??Number.MAX_SAFE_INTEGER)-(b.workspaceOrder??previous.get(b.id)??Number.MAX_SAFE_INTEGER));next.configs=restoreConfigOrder(next.configs);

@@ -13,5 +13,5 @@ export function normalizeSpecialComponent(row){
 // Defaults are virtual until edited, so an empty new workspace can still receive cloud data.
 export function withSpecialPresets(rows,shopId){
  const ids=new Set(rows.map(r=>r.sourceId));
- return [...rows,...specialComponentNames.map((name,i)=>normalizeSpecialComponent({sourceId:`special:${shopId}:${i+1}`,shopId,specialComponent:true,goodsId:'',name,originalName:name,warranty:'',upgrade:'',addonText:'',addonNote:''})).filter(r=>!ids.has(r.sourceId))];
+ return [...rows,...specialComponentNames.map((name,i)=>normalizeSpecialComponent({sourceId:`special:${shopId}:${i+1}`,shopId,specialComponent:true,goodsId:'',name,originalName:name,upgrade:'',addonText:'',addonNote:''})).filter(r=>!ids.has(r.sourceId))];
 }

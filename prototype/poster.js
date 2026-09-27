@@ -2,7 +2,7 @@ import {modelCanvasWidth,posterColumns} from './poster-width.js';
 import {moduleFrame,textFrame,displayedText} from './poster-geometry.js';
 import {richTextLayout,fitTextScale} from './poster-text.js';
 import {displayUpgrade,doubleMemoryUpgrade} from './memory-upgrade.js';
-import {wrapText,posterModules,posterParts,posterPalette} from './core.js';
+import {wrapText,posterModules,posterParts,posterPalette,slots} from './core.js';
 import {suggestedName} from './legacy-names.js';
 import {shopById,shopPalette,shopAddonColors,shopServiceTextColor,shopServiceColor,shopPosterOuterColor} from './shops.js';
 import {posterImageRegion} from './poster-images.js';
@@ -34,7 +34,7 @@ export async function renderPoster(c,width=defaultPosterWidth(c),{interactive=fa
  const measure=document.createElement('canvas').getContext('2d');
  if(autoWidth&&!fixed)base=modelCanvasWidth(measure,c,{tightRows,unifiedPanel});
  const font=s=>`${s.italic?'italic ':''}${s.weight} ${s.size}px "${s.fontFamily}",sans-serif`;
- const parts=posterParts(c).filter(p=>hasText(p.name));
+ const parts=posterParts(c).filter(p=>hasText(p.name)||(c.keepCorePartPlaceholders&&slots.slice(0,8).includes(p.slot)));
  const visible=posterModules(c).filter(m=>m.visible&&(!square||!['service','footer'].includes(m.type))&&(m.type==='parts'?parts.length:m.type==='footer'?hasText(c.footer):m.type==='service'?hasText(m.text):['addons','benefits','custom'].includes(m.type)?moduleEntries(c,m).length:true));
  // Extra room belongs mostly inside content rows, not in a large gap above the footer.
  const rowUnits=visible.reduce((sum,m)=>sum+(m.type==='parts'?parts.length*2:m.type==='service'?2:['addons','benefits','custom'].includes(m.type)?2*Math.ceil(moduleEntries(c,m).length/(m.type==='custom'?1:2)):0),0);
@@ -164,7 +164,6 @@ export async function renderPoster(c,width=defaultPosterWidth(c),{interactive=fa
      const top=y,opStart=ops.length,key=`part.${p.slot}`,label=p.slot.startsWith('配件')?'配件':p.slot,inner=(unifiedPanel?(square?1:7):mobile?2:5)+stretch;
      const available=fullWidth;
      let h=block(key+'.name',`${p.slot} 型号`,m.id,partTitle(p),nameX,top+inner,available,requested*nameScale,weight,color,1.25,true);
-     if(c.showWarranty&&p.warranty&&p.warranty!=='0')h+=block(key+'.warranty',`${p.slot} 质保`,m.id,p.warranty,nameX,top+inner+h,available,square?10:12,400,colors.muted,1.32,true);
      if(c.showUpgrades&&displayUpgrade(p)){h+=space(3);h+=block(key+'.upgrade',`${p.slot} 升级说明`,m.id,displayUpgrade(p),nameX,top+inner+h,available,Number(c.upgradeSize||(unifiedPanel?16:14))*(unifiedPanel?(square?.9:1):mobile?.95:square?.76:.88),Number(c.upgradeWeight||400),doubleMemoryUpgrade(p)?(dark?'#ffcc66':'#b54708'):c.upgradeColor||colors.accent,1.25,true);}
      const labelBase=unifiedPanel?requested*nameScale:tightRows?Math.min(18,requested*nameScale):square?13:16;
      const labelSize=spec(key+'.label',labelBase,unifiedPanel?700:tightRows?400:600,colors.accent);

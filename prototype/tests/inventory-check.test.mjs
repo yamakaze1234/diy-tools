@@ -22,12 +22,12 @@ test('unknown remains unknown: absent or duplicated inventory, null, strings and
 test('replacement affects only selected links and keeps quantity, hidden state and independent addons',()=>{
  const configs=[config('a','p'),config('b','q')],before=structuredClone(configs),report=checkInventory(configs,costs,'intel');
  const plan=stockReplacementPlan(configs,costs,[replacement],report,'100',['p'],'new');validateStockReplacement(plan,configs,costs,[replacement]);applyReplacement(plan,configs);
- assert.deepEqual(configs[1],before[1]);assert.equal(configs[0].parts[0].goodsId,'300');assert.equal(configs[0].parts[0].qty,2);assert.equal(configs[0].parts[0].posterVisible,false);assert.equal(configs[0].addons.some(a=>a.sourceId==='old'),false);assert.equal(configs[0].addons.find(a=>a.sourceId==='new').text,'新绑定加购');assert.ok(configs[0].addons.some(a=>a.text==='独立服务'));
+ assert.deepEqual(configs[1],before[1]);assert.equal(configs[0].parts[0].goodsId,'300');assert.equal(configs[0].parts[0].qty,2);assert.equal(configs[0].parts[0].posterVisible,false);assert.deepEqual(configs[0].addons,before[0].addons);assert.equal(configs[0].parts[0].upgrade,'新绑定加购');assert.ok(configs[0].addons.some(a=>a.text==='独立服务'));
 });
-test('multiple source descriptions for same goodsId are replaced together without leaving bound addons',()=>{
+test('multiple source descriptions for same goodsId are replaced together while preserving existing manual addons',()=>{
  const a=config('a','p');a.parts.push({...original,slot:'配件1',sourceId:'old2'});a.addons.push({sourceId:'old2',text:'第二条绑定'});
  const report=checkInventory([a],costs,'intel'),plan=stockReplacementPlan([a],costs,[replacement],report,'100',['p'],'new');
- assert.equal(plan.changes[0].after.parts.every(p=>p.sourceId==='new'),true);assert.equal(plan.changes[0].after.addons.filter(a=>a.sourceId).length,1);
+ assert.equal(plan.changes[0].after.parts.every(p=>p.sourceId==='new'),true);assert.deepEqual(plan.changes[0].after.addons,a.addons);
 });
 test('stale stock, changed replacement addon and concurrent config edits reject before any changes',()=>{
  const configs=[config('a','p'),config('b','q')],report=checkInventory(configs,costs,'intel'),plan=stockReplacementPlan(configs,costs,[replacement],report,'100',['p','q'],'new');
@@ -36,9 +36,9 @@ test('stale stock, changed replacement addon and concurrent config edits reject 
  configs[1].price=600;assert.throws(()=>validateStockReplacement(plan,configs,costs,[replacement]),/配置已变化/);assert.equal(configs[0].parts[0].goodsId,'100');
  configs[1].parts[0].qty=3;assert.throws(()=>stockReplacementPlan(configs,costs,[replacement],report,'100',['p'],'new'),/使用情况已变化/);
 });
-test('special replacement removes bound addon and unknown stock cannot be batch replaced here',()=>{
+test('special replacement preserves manual addon and unknown stock cannot be batch replaced here',()=>{
  const configs=[config('a','p')],report=checkInventory(configs,costs,'intel'),special={sourceId:'sp',shopId:'intel',specialComponent:true,goodsId:'',name:'不含 CPU'};
- const plan=stockReplacementPlan(configs,costs,[special],report,'100',['p'],'sp');assert.equal(plan.changes[0].after.parts[0].erp,0);assert.equal(plan.changes[0].after.addons.length,1);
+ const plan=stockReplacementPlan(configs,costs,[special],report,'100',['p'],'sp');assert.equal(plan.changes[0].after.parts[0].erp,0);assert.equal(plan.changes[0].after.addons.length,2);
  assert.throws(()=>stockReplacementPlan(configs,[],[replacement],checkInventory(configs,[],'intel'),'100',['p'],'new'),/低库存或无库存/);
  assert.throws(()=>stockReplacementPlan(configs,costs,[replacement],report,'100',[],'new'),/勾选/);
 });

@@ -14,13 +14,13 @@ try{
  const page=await browser.newPage();
  await page.route('https://template.test/**',async route=>{
   const name=new URL(route.request().url()).pathname;
-  await route.fulfill({contentType:name==='/'?'text/html':'text/javascript',body:name==='/'?'<div id="dialog-body"></div>':await fs.readFile(path.join(root,name))});
+  await route.fulfill({contentType:name==='/'?'text/html':'text/javascript',body:name==='/'?'<div id="dialog"><div id="dialog-body"></div></div>':await fs.readFile(path.join(root,name))});
  });
  await page.goto('https://template.test/');
  await page.evaluate(async code=>{
-  const core={...await import('/core.js'),...await import('/config-capacity.js')};
+  const core={...await import('/core.js'),...await import('/config-capacity.js'),...await import('/template-library.js')};
   const setup=new Function('core',`
-   const {clone,templateConfigs,importTemplateConfigs,productGroups,blankConfig,configCapacityMessage}=core;
+   const {clone,templateConfigs,importTemplateConfigs,productGroups,blankConfig,configCapacityMessage,editableTemplateLibrary}=core;
    const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)],esc=String;
    const activeShopId='intel',p={id:'target',name:'目标商品',shopId:'intel',configs:[]};
    const placeholder={...blankConfig(null,p),emptyLinkDraft:true};
@@ -34,7 +34,7 @@ try{
    window.fixture={snapshot:()=>({calls,checkpoints,configs:structuredClone(state.configs)}),release:()=>release.resolve(),fail:()=>release.reject(Error('保存失败'))};
   `);setup(core);
  },dialogCode);
- await page.locator('.template-choice').check();
+ assert.equal(await page.locator('.template-card[open]').count(),0);await page.locator('#template-expand-all').click();await page.locator('.template-choice').check();await page.locator('#template-collapse-all').click();assert.equal(await page.locator('.template-card[open]').count(),0);assert.match(await page.locator('#template-selection-count').innerText(),/已选 1/);await page.locator('#template-search').fill('不存在');assert.equal(await page.locator('.template-card:visible').count(),0);await page.locator('#template-search').fill('');
  await page.locator('#template-use').click();
  let snapshot=await page.evaluate(()=>window.fixture.snapshot());
  assert.equal(snapshot.calls,1);assert.equal(snapshot.checkpoints,0);assert.equal(snapshot.configs.length,1);assert.equal(snapshot.configs[0].emptyLinkDraft,true);

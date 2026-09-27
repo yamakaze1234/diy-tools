@@ -8,21 +8,34 @@ from common import dumps, digest
 import sqlite3
 
 class RetentionTests(unittest.TestCase):
-    def test_weekly_cleanup_keeps_latest_and_named_per_scope(self):
+    def test_three_days_expires_named_latest_and_all_scopes(self):
         with tempfile.TemporaryDirectory() as directory:
-            history=History(Path(directory)/'versions.sqlite',None)
+            history = History(Path(directory) / 'versions.sqlite', None)
             try:
-                for scope in ['a','b']:
-                    for revision in range(3):
-                        history.record(dict(revision=revision),scope,'测试')
-                named=history.name_version(dict(revision=3),'a','月末确认版')
-                current=datetime.now(timezone.utc)
-                self.assertEqual(history.prune(current),0)
-                self.assertEqual(history.prune(current+timedelta(days=7)),5)
-                self.assertEqual(history.db.execute('SELECT count(*) FROM versions').fetchone()[0],2)
-                self.assertEqual(history.prune(current+timedelta(days=6)),0)
-                self.assertEqual(history.get(named,'a')['state']['revision'],3)
-                self.assertEqual(history.cleanup('all',preview=True)['count'],0)
+                current = datetime.now(timezone.utc)
+                for scope in ('a', 'b'):
+                    history.record({'revision': 0}, scope, 'old')
+                named = history.name_version({'revision': 1}, 'a', 'named')
+                history.db.execute('UPDATE versions SET at=?', ((current-timedelta(days=3)).isoformat(),))
+                recent = history.record({'revision': 2}, 'b', 'recent')
+                # record() already prunes expired snapshots before deduplication.
+                self.assertEqual(history.db.execute('SELECT count(*) FROM versions').fetchone()[0], 1)
+                self.assertIsNotNone(recent)
+                self.assertEqual(history.prune(current+timedelta(days=2)), 0)
+                self.assertEqual(history.prune(current+timedelta(days=4)), 1)
+                self.assertEqual(history.db.execute('SELECT count(*) FROM versions').fetchone()[0], 0)
+            finally:
+                history.close()
+
+    def test_boundary_retains_newer_than_72_hours(self):
+        with tempfile.TemporaryDirectory() as directory:
+            history = History(Path(directory) / 'versions.sqlite', None)
+            try:
+                key = history.record({'revision': 0}, 'a', 'test')
+                at = datetime.now(timezone.utc)
+                history.db.execute('UPDATE versions SET at=?', ((at-timedelta(days=3)+timedelta(seconds=1)).isoformat(),))
+                self.assertEqual(history.prune(at), 0)
+                self.assertEqual(history.prune(at+timedelta(seconds=1)), 1)
             finally:
                 history.close()
 
@@ -57,7 +70,8 @@ class RetentionTests(unittest.TestCase):
             self.assertTrue(Path(result['backup']).exists())
             history=History(path,None)
             try:
-                self.assertEqual(history.get('old','a')['state']['text'],'历史' * 1000)
+                self.assertEqual(history._content(history.db.execute('SELECT * FROM versions WHERE id=?', ('old',)).fetchone()),content)
+                self.assertEqual(history.prune(),1)
                 self.assertLess(result['afterBytes'],result['beforeBytes']+4096)
             finally:
                 history.close()

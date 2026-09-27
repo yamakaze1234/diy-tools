@@ -111,8 +111,24 @@ def create_server(service, port=0):
                     with service.lock:
                         state = {**service.state, 'logs': service.domain('recentActivity', service.state.get('logs', []))}
                     return self.send(200, state)
+                if path == '/api/configs/batch' and self.command == 'POST':
+                    return self.send(200, service.update_configs_batch(self.body(), cookie))
                 if path == '/api/session':
                     return self.send(200, service.session)
+                if path == '/api/profit/start' and self.command == 'POST':
+                    return self.send(200, service.profit.start(self.body(), cookie))
+                if path == '/api/profit/status' and self.command == 'POST':
+                    data = self.body()
+                    return self.send(200, service.profit.status(data.get('runId')))
+                if path == '/api/profit/history' and self.command == 'GET':
+                    return self.send(200, dict(runs=service.profit.history()))
+                if path == '/api/profit/reset' and self.command == 'POST':
+                    return self.send(200, dict(ok=service.profit.reset(self.body())))
+                if path == '/api/profit/publish' and self.command == 'GET':
+                    with service.lock:
+                        return self.send(200, service.profit.publish_status())
+                if path == '/api/profit/publish' and self.command == 'POST':
+                    return self.send(200, service.profit.set_publish(self.body()))
                 if path == '/api/cache/preview' and self.command == 'GET':
                     from cache_cleanup import preview
                     with service.lock:
@@ -212,8 +228,14 @@ def create_server(service, port=0):
             if not hmac.compare_digest(self.headers.get('X-DIY-Sync', ''), cloud.csrf):
                 raise AppError('请从工作台打开同步功能', 403)
             if action == 'status' and self.command == 'GET':
-                with service.lock:
+                if not cloud.authenticated(cookie):
+                    return self.send(200, dict(configured=bool(service.config), signedIn=False, enabled=False))
+                if not service.lock.acquire(blocking=False):
+                    return self.send(200, dict(localBusy=True))
+                try:
                     result = cloud.status() if cloud.authenticated(cookie) else dict(configured=bool(service.config), signedIn=False, enabled=False)
+                finally:
+                    service.lock.release()
                 return self.send(200, result)
             data = self.body() if self.command == 'POST' else {}
             if action == 'session' and self.command == 'POST':
@@ -269,7 +291,9 @@ def create_server(service, port=0):
                     result = dict(lastSuccess=(service.state.get('erpSync') or {}).get('sqlSync') or service.state.get('sqlSync'))
             elif self.command == 'POST':
                 data = self.body()
-                if action == 'forget':
+                if action == 'product':
+                    result = service.sql_product(data.get('goodsId'), cookie)
+                elif action == 'forget':
                     result = service.credentials.clear(owner)
                 elif action == 'preview':
                     result = service.sql_preview(data, cookie)

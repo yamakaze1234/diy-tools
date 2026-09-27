@@ -8,7 +8,7 @@ import {emptySync} from '../cloud-sync.mjs';
 import {fixture} from './cloud-fixture.mjs';
 const require=createRequire(new URL('../../prototype/package.json',import.meta.url));
 const {build}=require('esbuild');
-const {chromium}=require('C:/Users/d1832/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright');
+const {chromium}=require(process.env.WORKBENCH_PLAYWRIGHT_MODULE || 'playwright');
 const result=await build({entryPoints:[fileURLToPath(new URL('../cloud-entry.mjs',import.meta.url))],bundle:true,write:false,format:'iife',define:{__WEB_LITE_CLOUD_CONFIG__:JSON.stringify({envId:'web-lite-test',region:'ap-shanghai',functionName:'workbenchApi',accessKey:'test-only'})},plugins:[{name:'isolated-member-auth',setup(build){build.onLoad({filter:/prototype[\\/]vendor[\\/]cloudbase\.js$/},()=>({contents:`let logged=false;const session={access_token:'isolated-test-token',user:{id:'test-user',is_anonymous:false}};export default {init(){return {auth:{async signInWithPassword({username,password}){logged=username==='tester'&&password==='test-password';return {error:logged?null:{message:'账号或密码错误'}};},async getSession(){return {data:{session:logged?session:null}};},onAuthStateChange(){},async signOut(){logged=false;return {};}}};}};`,loader:'js'}));}}]});
 const template=await readFile(new URL('../index.html',import.meta.url),'utf8'),css=await readFile(new URL('../style.css',import.meta.url),'utf8');
 const html=template.replace('<!--STYLE-->',()=>`<style>${css}</style>`).replace('<!--SCRIPT-->',()=>`<script>${result.outputFiles[0].text.replace(/<\/script/gi,'<\\/script')}</script>`);

@@ -1,22 +1,16 @@
 # DIY 配置工作台
 
-面向 DIY 整机业务的本地优先工作台，用于维护多店商品配置、核算成本与利润、读取 ERP 库存、制作配置图，并通过 CloudBase 与团队成员同步。当前源码版本为 **Python 桌面版 1.0.18**，支持 Windows 10/11 x64；轻量网页版源码为 **1.0.1**。
+面向 DIY 整机业务的本地优先工作台，用于维护多店商品配置、核算成本与利润、读取 ERP 库存、制作配置图，并通过 CloudBase 与团队成员同步。当前源码版本为 **Python 桌面版 1.0.37**，支持 Windows 10/11 x64；轻量网页版源码为 **1.0.2**。
 
 源码仓库：[Gitea](https://gitea.cq360.top/CoreStudio/diy-tools) · [GitHub](https://github.com/yamakaze1234/diy-tools)。桌面版本以 [pyproject.toml](python-desktop/pyproject.toml) 为准，网页版本以 [package.json](web-lite/package.json) 为准。
 
-## 本次更新
+## 本次源码更新
 
-从 1.0.6 升级到 1.0.18，主要变化如下；逐版本记录见 [更新日志](RELEASE_NOTES.md)。
+本次备份源码为 **v1.0.37**，包含 v1.0.18 之后的本地批量保存、利润检测、主机模板、批量导图、网页成本导入和同步修复。最新一轮改善了配件搜索、保存日志处理及忙碌状态反馈，详见 [更新日志](RELEASE_NOTES.md)。
 
-| 使用场景 | 更新后的行为 |
-| --- | --- |
-| 配件名称与升级文案 | 输出源名称与配置图展示名称分开维护；支持筛选并批量修改逐项升级说明，保留手动加购条目 |
-| 多选与批量排版 | 切换当前配置保留本店勾选；全部编辑格式可同步独立图片、位置、大小及图层顺序 |
-| 保存与出图 | 减少批量保存的重复计算；修复复制后编辑的保存失败；PNG/ZIP 按点击时的快照导出 |
-| 成本与导入 | ERP 单价缺失时明确提示核算成本回退；WPS 按精确商品 ID 匹配名称并导入升级说明 |
-| 历史与空间 | 历史快照无损压缩、命名版本和还原；旧图片缓存先预览再移入回收站 |
+后续计划见 [工作台后续优化 TODO](docs/工作台后续优化TODO.md)，其中包含源码中文注释要求；清单中的待办不代表已经实现。
 
-Windows 下载包已更新为 **v1.0.18**：[GitHub 下载页](https://github.com/yamakaze1234/diy-tools/releases/tag/v1.0.18) · [Gitea 下载页](https://gitea.cq360.top/CoreStudio/diy-tools/releases/tag/v1.0.18)。两端提供相同 ZIP 与 SHA256 校验文件；下载附件 `DIY-Workbench-v1.0.18-Windows-x64.zip`，完整解压使用。
+本次仅更新源码，不发布新的 Windows 二进制附件。已发布的 **v1.0.18** 下载入口：[GitHub](https://github.com/yamakaze1234/diy-tools/releases/tag/v1.0.18) · [Gitea](https://gitea.cq360.top/CoreStudio/diy-tools/releases/tag/v1.0.18)。源码版本和可下载程序包版本分别维护。
 
 ## 快速入口
 

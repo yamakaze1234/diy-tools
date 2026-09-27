@@ -8,7 +8,7 @@ from io import BytesIO
 import zipfile
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from release_config import configure_local_app, read_config, verify_local_runtime
+from release_config import configure_local_app, read_config, verify_candidate_config, verify_local_runtime
 
 
 class ReleaseConfigTests(unittest.TestCase):
@@ -31,6 +31,15 @@ class ReleaseConfigTests(unittest.TestCase):
         self.assertEqual(read_config(self.new), self.config)
         self.assertFalse((self.new / 'data').exists())
         self.assertEqual(read_config(self.old), self.config)
+
+    def test_independent_candidate_requires_matching_local_route(self):
+        with self.assertRaisesRegex(ValueError, '示例配置'):
+            verify_candidate_config(self.new, self.old)
+        configure_local_app(self.new, self.old)
+        self.assertTrue(verify_candidate_config(self.new, self.old)['matchesPrevious'])
+        self.write(self.new, {**self.config, 'envId': 'another-env'})
+        with self.assertRaisesRegex(ValueError, '不一致'):
+            verify_candidate_config(self.new, self.old)
 
     def test_placeholder_source_rejected_before_target_changes(self):
         self.write(self.old, {**self.config, 'envId': 'your-cloudbase-env-id'})

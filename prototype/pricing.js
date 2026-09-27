@@ -7,7 +7,7 @@ export function pricing(config,settings={}){
  return{arrival,coupon,listPrice:(Math.round(arrival*100)+Math.round(coupon*100))/100,term,rate,fee:Math.round(arrival*100*rate)/100};
 }
 export function pricingColumn(configs,settings){if(!configs.length)throw Error('请先勾选配置');return configs.map(c=>Math.round(pricing(c,settings).listPrice).toString()).join('\r\n');}
-export const sessionDeleted=(configs,sessionId)=>configs.filter(c=>c.deletedAt&&c.deletionSessionId===sessionId);
+export const deletedWithinRetention=(configs,at=Date.now())=>configs.filter(c=>c.deletedAt&&Date.parse(c.deletedAt)>at-3*86400000);
 
 // A null term means legacy configurations disagree; require an explicit choice.
 export function productInstallment(configs=[]){

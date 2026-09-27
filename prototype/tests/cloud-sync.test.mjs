@@ -6,6 +6,7 @@ import {mergeRecord,validateRecord,equal} from '../../shared/sync/protocol.mjs';
 import {previewMigration} from '../../shared/sync/migration-preview.mjs';
 import {SyncStore} from '../local-store/sync-store.mjs';
 import {SyncClient} from '../sync-client.mjs';
+import {WorkspaceClient} from '../workspace-client.mjs';
 import {cloudTransport} from '../cloud-transport.mjs';
 const config=(id='c')=>({id,name:'测试',shopId:'intel',priceCents:100000,parts:[{lineId:'line-1',goodsId:'3800690311462781053',qty:1}],note:'原备注'});
 const mem=()=>{const s=new SyncStore(':memory:');s.bind('test','member-a');return s;};
@@ -44,6 +45,32 @@ test('确认回执时继续编辑，不覆盖新输入',()=>{
 });
 test('固定上界分页：序号不连续时整页回滚且不推进游标',()=>{
  const s=mem();receive(s,record(config(),1,1));assert.throws(()=>receive(s,record({...config(),note:'跳页'},2,3)));assert.equal(s.meta('cursor'),1);assert.equal(s.get('configuration','c').draft.note,'原备注');s.close();
+});
+test('旧游标从检查点重建，保留本地草稿并接续增量日志',async()=>{
+ const s=mem(),base=config();receive(s,record(base,1,1));
+ s.edit('configuration','c',{...base,note:'离线修改'});
+ const remote={...base,name:'云端改名'},later={...remote,footer:'检查点后修改'};
+ let snapshotCalls=0;
+ const call=async req=>{
+  if(req.action==='sync.pull')return req.payload.cursor<10?{ok:false,code:'SNAPSHOT_REQUIRED',checkpointSeq:10}:{ok:true,headSeq:11,nextCursor:11,hasMore:false,changes:req.payload.cursor<11?[record(later,3,11)]:[]};
+  if(req.action==='sync.snapshot'){
+   snapshotCalls++;
+   return {ok:true,checkpointSeq:10,records:[{type:'configuration',id:'c',data:remote,version:2}],nextCursor:['configuration','c'],hasMore:false};
+  }
+  throw Error('unexpected upload');
+ };
+ // The draft is sent after the pull; keep it as a conflict-free draft while
+ // inspecting the checkpoint directly, before the test transport accepts writes.
+ s.beginCheckpoint(10);s.stageCheckpointPage(10,[{type:'configuration',id:'c',data:remote,version:2}]);s.finishCheckpoint(10);
+ assert.equal(s.meta('cursor'),10);assert.equal(s.get('configuration','c').draft.note,'离线修改');assert.equal(s.get('configuration','c').draft.name,'云端改名');
+ assert.equal(s.get('configuration','c').version,2);
+ // Restart from the old cursor in a separate client to exercise the wire path.
+ const other=mem();receive(other,record(base,1,1));await new WorkspaceClient(other,async req=>{
+  if(req.action==='sync.pushBatch')return {ok:true,results:req.payload.requests.map(r=>({ok:true,record:{type:r.payload.entityType,id:r.payload.entityId,version:4,data:r.payload.after}}))};
+  return call(req);
+ }).cycle();
+ assert.equal(snapshotCalls,1);assert.equal(other.meta('cursor'),11);assert.equal(other.get('configuration','c').draft.footer,'检查点后修改');
+ s.close();other.close();
 });
 test('冲突只阻塞当前记录，其他记录继续；解决时用所见云端版本',()=>{
  const s=mem();receive(s,record(config(),1,1));s.edit('configuration','c',{...config(),name:'我的'});const req=s.nextRequest();

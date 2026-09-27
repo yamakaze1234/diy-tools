@@ -1,10 +1,55 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {SyncStore} from '../local-store/sync-store.mjs';
-import {projectWorkspace,applyWorkspace,changesBetween} from '../workspace-records.mjs';
+import {projectWorkspace,applyWorkspace,changesBetween,mergeWorkspaceEdit} from '../workspace-records.mjs';
 import {validateWorkspaceRecord} from '../workspace-validation.mjs';
 import {mergeEditingState,sameEditingState} from '../workspace-ui-merge.js';
 const fixture=()=>({configs:[{id:'c',shopId:'intel',name:'配置',price:200,parts:[{slot:'CPU',goodsId:'123',qty:1,tax:15,erp:12},{slot:'空',goodsId:'',qty:0,tax:0,erp:0}]}],templates:[{id:'t',name:'模板'}],sourceCatalog:[{sourceId:'s',shopId:'intel',goodsId:'123',name:'CPU',tax:15,erp:12}],costSource:[{goodsId:'123',name:'CPU',tax:15,erp:12,stockAvailable:5}],shopSettings:{intel:{coupon:5}},caseGallery:[],erpSync:{scope:'test',total:1},revision:1});
+test('网页复制时间戳不阻塞删除与编辑，真实并发修改和删除仍冲突',()=>{
+ const initial=fixture(),records=projectWorkspace(initial),row=records.find(r=>r.type==='configuration');
+ row.data.updatedAt=null;
+ const before=applyWorkspace(initial,records),after=structuredClone(before);
+ after.configs[0].deletedAt='2026-09-26T00:00:00Z';
+ const change=changesBetween(before,after)[0];
+ const store=new SyncStore(':memory:',{protocolVersion:2,validate:validateWorkspaceRecord});
+ try{
+  store.editMany(records);
+  assert.throws(()=>store.editMany([change]),/\$record/);
+  store.editMany([change],undefined,['123']);
+  assert.equal(store.get('configuration','c').draft.deletedAt,after.configs[0].deletedAt);
+  assert.equal(store.get('configuration','c').draft.parts[0].tax,15);
+  const edited={...change.expectedDraft,name:'编辑'};
+  assert.deepEqual(mergeWorkspaceEdit('configuration',change.expectedDraft,edited,row.data,['123']).fields,[]);
+  for(const concurrent of [{...row.data,name:'他人编辑'},{...row.data,deletedAt:'2026-09-25T00:00:00Z'}]){
+   assert.deepEqual(mergeWorkspaceEdit('configuration',change.expectedDraft,change.data,concurrent,['123']).fields,['$record']);
+  }
+ }finally{store.close();}
+});
+test('网页旧成本缓存不造成配件保存冲突，真实并发数量变化仍拒绝',()=>{
+ const store=new SyncStore(':memory:',{protocolVersion:2,validate:validateWorkspaceRecord});
+ try{
+  const initial=fixture(),records=projectWorkspace(initial),row=records.find(r=>r.type==='configuration');
+  row.data.parts[0].tax=999;row.data.parts[0].taxUpdatedAt='2026-09-01T00:00:00Z';
+  store.editMany(records);
+  const before=applyWorkspace(initial,store.list()),after=structuredClone(before);after.configs[0].parts[0].name='网页同步后本机编辑';
+  const changes=changesBetween(before,after);
+  assert.throws(()=>store.editMany(changes),/parts/);
+  store.editMany(changes,undefined,['123']);
+  assert.equal(store.get('configuration','c').draft.parts[0].name,'网页同步后本机编辑');
+  assert.equal(store.get('configuration','c').draft.parts[0].tax,undefined);
+  assert.equal(applyWorkspace(after,store.list()).configs[0].parts[0].tax,15);
+  store.editMany(records);const concurrent=structuredClone(row.data);concurrent.parts[0].qty=2;
+  store.editMany([{...row,data:concurrent}]);
+  assert.throws(()=>store.editMany(changes,undefined,['123']),/parts/);
+ }finally{store.close();}
+});
+test('未绑定共享成本的人工价仍参与冲突，移除共享成本后保留回退价',()=>{
+ const base={parts:[{goodsId:'123',tax:10}]},local={parts:[{goodsId:'123',tax:20}]},remote={parts:[{goodsId:'123',tax:30}]};
+ assert.deepEqual(mergeWorkspaceEdit('configuration',base,local,remote,[]).fields,['parts']);
+ const projected={parts:[{goodsId:'123'}]};
+ const result=mergeWorkspaceEdit('configuration',projected,local,remote,['123']);
+ assert.deepEqual(result.fields,[]);assert.equal(result.value.parts[0].tax,20);
+});
 test('商品分组后删除配置不误报冲突，真正的并发编辑仍被拦截',()=>{
  const initial=fixture();initial.configs=['a','b','c'].map((id,i)=>({...structuredClone(initial.configs[0]),id,productId:i===1?'other':'same'}));
  const store=new SyncStore(':memory:',{protocolVersion:2,validate:validateWorkspaceRecord});
@@ -40,3 +85,13 @@ test('保存回执遇到继续输入，保留独立更新并检测同字段冲�
 test('正式备份恢复保留业务状态、启用状态和未确认提交',()=>{const options={protocolVersion:2,validate:validateWorkspaceRecord},s=new SyncStore(':memory:',options),r=new SyncStore(':memory:',options);s.bind('workbench','member');s.setMeta('enabled',true);s.editMany(projectWorkspace(fixture()),fixture());const batch=s.nextBatch();r.restore(s.backup());assert.equal(r.meta('enabled'),true);assert.deepEqual(r.meta('workspaceState'),fixture());assert.deepEqual(r.nextBatch(),batch);assert.throws(()=>new SyncStore(':memory:').restore(s.backup()),/协议/);s.close();r.close();});
 
 test('撤销历史重基后仅撤销本人的字段，保留同步回执中的他人字段',()=>{const history=fixture(),saved=fixture(),remote=fixture();saved.configs[0].name='我的名称';remote.configs[0].name='我的名称';remote.configs[0].footer='他人备注';const result=mergeEditingState(saved,history,remote);assert.equal(result.conflict,false);assert.equal(result.state.configs[0].name,'配置');assert.equal(result.state.configs[0].footer,'他人备注');});
+
+test('旧版排版默认值不阻塞整条链接删除，真实并发编辑仍拒绝',()=>{
+ const stored=projectWorkspace(fixture()).find(r=>r.type==='configuration').data;
+ const base={...structuredClone(stored),skuMode:'dedicated',posterDesignVersion:1};
+ const deleted={...structuredClone(base),deletedAt:'2026-09-27T00:00:00Z'};
+ assert.deepEqual(mergeWorkspaceEdit('configuration',base,deleted,stored,['123']).fields,[]);
+ for(const remote of [{...stored,name:'其他人改名'},{...stored,skuMode:'padded'},{...stored,posterDesignVersion:2}]){
+  assert.deepEqual(mergeWorkspaceEdit('configuration',base,deleted,remote,['123']).fields,['$record']);
+ }
+});

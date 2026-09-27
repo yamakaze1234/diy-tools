@@ -254,13 +254,13 @@ class Cloud:
         self.s.store.set_meta('workspaceState', next_state)
         self.s.save(next_state, '接收云端更新')
 
-    def persist(self, before, next_state, expected=None):
+    def persist(self, before, next_state, expected=None, prepared_changes=None):
         if not self.enabled():
             return next_state
         if not self.s.store.get('workspace_meta', 'root'):
             raise AppError('首次云端数据仍在下载，请稍后编辑')
         baseline = copy.deepcopy(before if expected is None else expected)
-        initial_changes = self.s.domain('changesBetween', baseline, next_state)
+        initial_changes = prepared_changes if prepared_changes is not None else self.s.domain('changesBetween', baseline, next_state)
         edited_configs = {c['id'] for c in initial_changes if c['type'] == 'configuration'}
         # Old records have no BOM field. Migrate once in the same local transaction
         # as the save, rather than treating the normalized default as already stored.
@@ -279,7 +279,8 @@ class Cloud:
             value = self.s.domain('initializeMaterializedState', self.s.domain('applyWorkspace', next_state, self.s.store.materialized_records()))
             merged.append(value)
             return value
-        self.s.store.edit_many(changes, materialize, actor=self.audit_actor())
+        self.s.store.edit_many(changes, materialize, actor=self.audit_actor(),
+                               shared_cost_ids={c['goodsId'] for c in baseline.get('costSource', [])})
         return merged[0]
 
     def audit_actor(self):
@@ -368,8 +369,12 @@ class Cloud:
                 raise AppError('请选择有效的发布或接收方式')
             atomic(self.s.local / 'backups' / ('before-sync-' + uid() + '.json'), dumps(self.s.state))
             if mode == 'publish':
-                self.s.store.edit_many(summary['records'] + [dict(type='workspace_meta', id='root', data=dict(format=2, createdAt=now(), counts=summary['counts']))], self.s.state, actor=self.audit_actor())
-            self.s.store.set_meta('enabled', True)
+                self.s.store.edit_many(summary['records'] + [dict(type='workspace_meta', id='root', data=dict(format=2, createdAt=now(), counts=summary['counts']))],
+                                       self.s.state, actor=self.audit_actor(), clear_first=True, enable_sync=True)
+            else:
+                # Local-only drafts must never turn a join into a publish. Keep
+                # the before-sync backup and audit, then receive the remote head.
+                self.s.store.edit_many([], self.s.state, clear_first=True, enable_sync=True)
             self.schedule(manual=True)
             return self.status()
 

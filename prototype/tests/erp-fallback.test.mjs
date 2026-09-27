@@ -13,7 +13,7 @@ test('SQL 未识别时按核算单价计算 ERP 利润，旧 ERP 缓存不会冒
  assert.equal(totals(c).erp,1000);
  assert.equal(totals(c).erpProfit,960);
  assert.equal(totals(c).erpFallback,1);
- assert.deepEqual(overviewProfits(c,{}),[860,960]);
+ assert.deepEqual(overviewProfits(c,{}),[820,960]);
  c.parts[0].tax=600;
  assert.equal(totals(c).erp,1200);
  assert.equal(c.parts[0].erp,400);

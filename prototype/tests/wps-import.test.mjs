@@ -3,6 +3,48 @@ import assert from 'node:assert/strict';
 import {clipboardRows,parseWpsParts,importProblems} from '../wps-import.js';
 import {erpRow,totals} from '../core.js';
 import {screenshotText,screenshotBlock} from './wps-block-fixture.mjs';
+import {withSpecialPresets} from '../special-components.js';
+
+test('WPS 自动绑定本店全部特殊配件，展示和实际清单可直接核算与导出',()=>{
+ const catalog=withSpecialPresets([],'intel');
+ for(const [index,source] of catalog.entries()){
+  const name=index===0?'不含显卡，可咨询客服加装显卡使用':source.name.replace(/ /g,'  ');
+  const result=parseWpsParts(`${index%2?'':'0'}\t1\t${name}`,{catalog});
+  assert.deepEqual(importProblems(result),[]);
+  const part=result.rows[0].part;
+  assert.equal(part.sourceId,source.sourceId);assert.equal(part.name,source.name);
+  assert.equal(part.specialComponent,true);assert.equal(part.goodsId,'');
+  assert.equal(part.erp,0);assert.equal(part.tax,0);assert.equal(part.erpUnknown,false);
+  const config={price:1000,parts:[part],actualParts:structuredClone([part])};
+  assert.equal(totals(config).missing,0);assert.equal(totals(config).tax,0);
+  assert.equal(erpRow(config).length,56);
+ }
+});
+
+test('三列、D:H、完整区域批量导入都识别无卡和核显文案',()=>{
+ for(const format of [3,5,14]){
+  const parsed=parseWpsParts(screenshotText(2,format),{catalog:withSpecialPresets([],'jonsbo')});
+  assert.deepEqual(importProblems(parsed),[]);
+  for(const [index,group] of parsed.groups.entries()){
+   const gpu=group.rows.find(r=>r.part.slot==='显卡').part;
+   assert.equal(gpu.specialComponent,true);assert.equal(gpu.sourceId,`special:jonsbo:${index?3:1}`);
+   assert.equal(gpu.tax,0);
+  }
+ }
+});
+
+test('特殊配件识别不吞掉真实 ID、未知零 ID、已删除来源或重名歧义',()=>{
+ const catalog=withSpecialPresets([],'intel'),name=catalog[0].name;
+ const real=parseWpsParts(`123\t1\t${name}`,{catalog,costSource:[{goodsId:'123',erp:99,tax:100}]}).rows[0].part;
+ assert.equal(real.goodsId,'123');assert.equal(real.tax,100);assert.notEqual(real.specialComponent,true);
+ const unknown=parseWpsParts('0\t1\t不含显卡 另行定价',{catalog:[catalog[0]]}).rows[0].part;
+ assert.equal(unknown.name,'不含显卡 另行定价');assert.equal(unknown.tax,null);assert.equal(unknown.sourceId,undefined);
+ const deleted=parseWpsParts(`0\t1\t${name}`,{catalog:[{...catalog[0],deletedAt:'2026-09-26T00:00:00Z'}]}).rows[0].part;
+ assert.notEqual(deleted.specialComponent,true);assert.equal(deleted.tax,null);
+ const ambiguous=parseWpsParts(`0\t1\t${name}`,{catalog:[catalog[0],{...catalog[0],sourceId:'duplicate'}]});
+ assert.match(importProblems(ambiguous).join('；'),/多个特殊配件/);
+ assert.ok(importProblems(parseWpsParts('\t1\t未知配件',{catalog})).some(e=>e.includes('goods ID')));
+});
 
 test('截图 760 行按 19 行保留边界：40 套配置独立导入，汇总和空槽不报错',()=>{
  const parsed=parseWpsParts(screenshotText(40));assert.deepEqual(importProblems(parsed),[]);assert.equal(parsed.groups.length,40);assert.equal(parsed.rows.length,400);assert.equal(parsed.skipCounts.header,40);assert.equal(parsed.skipCounts.summary,40);assert.equal(parsed.skipCounts.placeholder,160);assert.equal(parsed.skipped,360);

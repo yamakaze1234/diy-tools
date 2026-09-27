@@ -64,7 +64,7 @@ test('costs and ERP columns use actual quantities and IDs; posters still use dis
 test('new blank configs clear the real bill; templates preserve independently edited actual rows',()=>{
  const c=config();c.actualParts=[part('CPU','300',2)];const product={id:'p',shopId:'intel',name:'链接'};
  const blank=blankConfig(c,product);assert.deepEqual(blank.actualParts,blank.parts);assert.notEqual(blank.actualParts,blank.parts);
- const imported=importTemplateConfigs([c],product)[0];assert.deepEqual(imported.actualParts,c.actualParts);imported.actualParts[0].qty=9;assert.equal(c.actualParts[0].qty,2);
+ const imported=importTemplateConfigs([c],product)[0];assert.deepEqual(imported.actualParts.filter(p=>p.name||p.goodsId),c.actualParts);assert.equal(imported.actualParts.length,8);imported.actualParts[0].qty=9;assert.equal(c.actualParts[0].qty,2);
 });
 test('shared costs and ERP refresh update actual-only IDs without touching their descriptions',()=>{
  const c=config();c.actualParts=[part('CPU','300',2)];const s={configs:[c],sourceCatalog:[],costSource:[{goodsId:'300',name:'原始名',tax:310}]};

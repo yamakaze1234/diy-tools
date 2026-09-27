@@ -187,3 +187,110 @@ def read_bundle(config, password, connector=None):
                 connection.close()
             except Exception:
                 pass  # A broken network must not hide the original read error.
+
+
+def read_costs(config, password, goods_ids, connector=None):
+    """Bounded exact-ID cost read. Failed batches stay unknown, never zero."""
+    config = settings(config)
+    if not isinstance(password, str) or not password or len(password) > 1024:
+        raise AppError('请输入数据库密码')
+    ids = sorted(set(goods_ids))
+    if len(ids) > 100000 or any(not isinstance(key, str) or not re.fullmatch(r'[1-9]\d{0,19}', key) for key in ids):
+        raise AppError('ERP 商品 ID 无效或超限')
+    if not ids:
+        return dict(costs={}, failed=[], collectedAt=None)
+    import certifi
+    import pytds
+    from profit_rules import cents
+    from common import now
+    _install_tls_adapter()
+    connection = None
+    try:
+        _tls_settings.trust = config['trustServerCertificate']
+        connection = (connector or pytds.connect)(server=config['server'], port=config['port'], database=config['database'], user=config['user'], password=password,
+            login_timeout=10, timeout=30, as_dict=True, autocommit=True, readonly=True, appname='DIYWorkbenchProfitReadonly',
+            cafile=certifi.where() if config['encrypt'] else None, validate_host=not config['trustServerCertificate'], enc_login_only=False, disable_connect_retry=True, pooling=False)
+        cursor, costs, failed = connection.cursor(), {}, []
+        for start in range(0, len(ids), 500):
+            batch = ids[start:start+500]
+            placeholders = ','.join(['%s'] * len(batch))
+            query = f'''SELECT CONVERT(varchar(20), [goods_id]) AS [goods_id], [库存成本]
+                FROM [库存].[分库库存] WHERE [库房]=N'公司大库'
+                AND CONVERT(varchar(20), [goods_id]) IN ({placeholders})'''
+            try:
+                cursor.execute(query, tuple(batch))
+                seen = set()
+                for row in cursor.fetchall():
+                    key = str(row.get('goods_id') or '')
+                    if key not in batch or key in seen:
+                        raise ValueError('ERP 局部查询身份重复或越界')
+                    seen.add(key)
+                    value = cents(row.get('库存成本'))
+                    if value is not None:
+                        costs[key] = value
+            except Exception:
+                failed.extend(batch)
+                for key in batch:
+                    costs.pop(key, None)
+        return dict(costs=costs, failed=failed, collectedAt=now())
+    except Exception:
+        raise AppError('ERP 成本只读查询失败；本轮仍可检测核算利润') from None
+    finally:
+        _tls_settings.trust = False
+        if connection:
+            try:
+                connection.close()
+            except Exception:
+                pass
+
+
+def read_product(config, password, goods_id, connector=None):
+    """Exact-ID, read-only name and company-warehouse unit cost lookup."""
+    config = settings(config)
+    if not isinstance(goods_id, str) or not re.fullmatch(r'[1-9]\d{0,19}', goods_id):
+        raise AppError('请填写准确的数字 ERP ID')
+    if not isinstance(password, str) or not password:
+        raise AppError('请先在数据库同步中保存连接设置')
+    import certifi
+    import pytds
+    from common import now
+    _install_tls_adapter()
+    connection = None
+    try:
+        _tls_settings.trust = config['trustServerCertificate']
+        connection = (connector or pytds.connect)(server=config['server'], port=config['port'], database=config['database'], user=config['user'], password=password,
+            login_timeout=10, timeout=10, as_dict=True, autocommit=True, readonly=True, appname='DIYWorkbenchProductReadonly',
+            cafile=certifi.where() if config['encrypt'] else None, validate_host=not config['trustServerCertificate'], enc_login_only=False, disable_connect_retry=True, pooling=False)
+        cursor = connection.cursor()
+        cursor.execute("""SELECT TOP (2) CONVERT(varchar(20), c.[goods_id]) AS goods_id,
+            c.[商品名称] AS name, w.[库存成本] AS erp
+            FROM [库存].[库存查询] c LEFT JOIN [库存].[分库库存] w
+            ON c.[goods_id]=w.[goods_id] AND w.[库房]=N'公司大库'
+            WHERE CONVERT(varchar(20), c.[goods_id])=%s""", (goods_id,))
+        rows = cursor.fetchall()
+        if len(rows) > 1 or any(str(row.get('goods_id')) != goods_id for row in rows):
+            raise AppError('ERP 商品身份重复或不匹配，请核对数据')
+        if not rows:
+            return dict(found=False, goodsId=goods_id, collectedAt=now())
+        row = rows[0]
+        raw = row.get('erp')
+        price = None if raw is None else float(raw)
+        if price is not None and (isinstance(raw, bool) or not math.isfinite(price) or price < 0):
+            price = None
+        name = row.get('name')
+        if isinstance(name, bytes):
+            name = name.decode('utf-8')
+        if not isinstance(name, str) or not name.strip():
+            raise AppError('ERP 商品名称为空，请核对数据')
+        return dict(found=True, goodsId=goods_id, name=name.strip(), erp=price, collectedAt=now())
+    except AppError:
+        raise
+    except Exception:
+        raise AppError('ERP 查询失败，请检查数据库连接后重试；未修改任何 ERP 数据') from None
+    finally:
+        _tls_settings.trust = False
+        if connection:
+            try:
+                connection.close()
+            except Exception:
+                pass

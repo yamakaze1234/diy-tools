@@ -1,4 +1,5 @@
 import {recentActivity,activityEntry} from '../activity.js';
+import {mergeWorkspaceEdit} from '../workspace-records.mjs';
 import {DatabaseSync} from 'node:sqlite';
 import {randomUUID, createHash} from 'node:crypto';
 import {clone, equal, mergeRecord, validateRecord, PROTOCOL_VERSION} from '../../shared/sync/protocol.mjs';
@@ -11,7 +12,8 @@ export class SyncStore {
       CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS records (type TEXT NOT NULL, id TEXT NOT NULL, base TEXT, version INTEGER NOT NULL DEFAULT 0, draft TEXT, conflict TEXT, PRIMARY KEY(type,id));
       CREATE TABLE IF NOT EXISTS outbox (mutation_id TEXT PRIMARY KEY, type TEXT NOT NULL, id TEXT NOT NULL, request TEXT NOT NULL, attempts INTEGER NOT NULL DEFAULT 0, UNIQUE(type,id));
-      CREATE TABLE IF NOT EXISTS backups (id TEXT PRIMARY KEY, created_at TEXT NOT NULL, sha256 TEXT NOT NULL, content TEXT NOT NULL);`);
+      CREATE TABLE IF NOT EXISTS backups (id TEXT PRIMARY KEY, created_at TEXT NOT NULL, sha256 TEXT NOT NULL, content TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS checkpoint_rows (type TEXT NOT NULL, id TEXT NOT NULL, version INTEGER NOT NULL, data TEXT NOT NULL, updated_by TEXT, updated_at TEXT, PRIMARY KEY(type,id));`);
     if (!this.meta('deviceId')) this.setMeta('deviceId', randomUUID());
   }
   close() { this.db.close(); }
@@ -50,10 +52,10 @@ export class SyncStore {
       if (!r) this.setMeta('lastEditAt', new Date().toISOString());
     });
   }
-  editMany(changes,state) {
+  editMany(changes,state,sharedCostIds) {
     return this.transaction(()=>{
       for(const c of changes){let data=c.data;const r=this.get(c.type,c.id);
-        if(c.expectedDraft!==undefined&&r){const merged=mergeRecord(c.expectedDraft,data,r.draft);if(merged.fields.length)throw Object.assign(Error('编辑期间同一字段已变化：'+merged.fields.join('、')),{status:409});data=merged.value;}
+        if(c.expectedDraft!==undefined&&r){const merged=sharedCostIds===undefined?mergeRecord(c.expectedDraft,data,r.draft):mergeWorkspaceEdit(c.type,c.expectedDraft,data,r.draft,sharedCostIds);if(merged.fields.length)throw Object.assign(Error('编辑期间同一字段已变化：'+merged.fields.join('、')),{status:409});data=merged.value;}
         this.validate(c.type,c.id,data);
         this.db.prepare('INSERT INTO records(type,id,base,version,draft) VALUES (?,?,?,0,?) ON CONFLICT(type,id) DO UPDATE SET draft=excluded.draft').run(c.type,c.id,'null',JSON.stringify(data));
       }
@@ -129,6 +131,32 @@ export class SyncStore {
       if (page.nextCursor !== cursor || (page.hasMore && !page.changes.length)) throw Error('游标与分页结果不一致');
       if(activity.length)this.setMeta('activity',recentActivity([...activity,...(this.meta('activity')||[])]));
       this.setMeta('cursor',cursor);
+    });
+  }
+  beginCheckpoint(seq) {
+    if(!Number.isSafeInteger(seq)||seq<0)throw Error('检查点序号无效');
+    this.transaction(()=>{if(this.db.prepare('SELECT 1 FROM outbox LIMIT 1').get())throw Error('待确认提交尚未核对，不能接收检查点');this.db.exec('DELETE FROM checkpoint_rows');this.setMeta('checkpointStageSeq',seq);});
+  }
+  stageCheckpointPage(seq,rows) {
+    if(this.meta('checkpointStageSeq')!==seq||!Array.isArray(rows))throw Error('检查点分页无效');
+    this.transaction(()=>{const insert=this.db.prepare('INSERT INTO checkpoint_rows VALUES (?,?,?,?,?,?)');for(const row of rows){
+      if(typeof row.type!=='string'||typeof row.id!=='string'||!Number.isSafeInteger(row.version)||row.version<1||!row.data||typeof row.data!=='object')throw Error('检查点记录无效');
+      if(this.cloudPolicy&&!this.cloudPolicy.keep(row.type))continue;
+      insert.run(row.type,row.id,row.version,JSON.stringify(this.cloudPolicy?this.cloudPolicy.clean(row.data):row.data),row.updatedBy||null,row.updatedAt||null);
+    }});
+  }
+  finishCheckpoint(seq) {
+    if(this.meta('checkpointStageSeq')!==seq)throw Error('检查点版本已变化');
+    this.transaction(()=>{
+      if(this.db.prepare('SELECT 1 FROM outbox LIMIT 1').get())throw Error('待确认提交尚未核对，不能接收检查点');
+      const rows=this.db.prepare('SELECT * FROM checkpoint_rows ORDER BY type,id').all();
+      for(const row of rows){const remote=JSON.parse(row.data),old=this.get(row.type,row.id);
+        if(old&&old.version>row.version)continue;
+        if(!old){this.db.prepare('INSERT INTO records VALUES (?,?,?,?,?,NULL)').run(row.type,row.id,row.data,row.version,row.data);continue;}
+        const merged=mergeRecord(old.base,old.draft,remote),conflict=old.conflict||(merged.fields.length?{code:'CONFLICT',fields:merged.fields,base:old.base,local:old.draft,remote:{type:row.type,id:row.id,version:row.version,data:remote,updatedBy:row.updated_by,updatedAt:row.updated_at}}:null);
+        this.db.prepare('UPDATE records SET base=?,version=?,draft=?,conflict=? WHERE type=? AND id=?').run(row.data,row.version,JSON.stringify(merged.value),conflict?JSON.stringify(conflict):null,row.type,row.id);
+      }
+      this.setMeta('cursor',seq);this.setMeta('needsMaterialize',true);this.db.exec('DELETE FROM checkpoint_rows');this.db.prepare("DELETE FROM meta WHERE key='checkpointStageSeq'").run();
     });
   }
   resolve(type,id,choice) {

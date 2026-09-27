@@ -1,4 +1,8 @@
-"""Package only application files, never the portable user's data directory."""
+"""Build a public template ZIP without user data or production routing.
+
+For an internal, login-ready colleague ZIP, run package_colleague.py afterwards.
+The public template alone cannot log into the production workspace.
+"""
 import hashlib
 import json
 import shutil

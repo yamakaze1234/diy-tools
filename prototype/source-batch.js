@@ -1,3 +1,5 @@
+import {shops} from './shops.js';
+import {allConfigParts} from './actual-parts.js';
 import {clone} from './core.js';
 import {sourceAddon,sourceAddonFields,validateAddon} from './addon-data.js';
 import {isSpecialComponent,normalizeSpecialComponent} from './special-components.js';
@@ -10,6 +12,20 @@ const equal=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
 
 // Build the entire batch on a copy. A stale or invalid row never partially edits state.
 export function sourceBatch(state,changes,at=new Date().toISOString()){
+ let skipped=0;const expanded=[];
+ for(const change of changes){
+  expanded.push(change);
+  if(change.before||!change.targetShopIds)continue;
+  for(const shopId of new Set(change.targetShopIds)){
+   if(!shops.some(shop=>shop.id===shopId))throw Error('新增店铺无效');
+   if(shopId===change.row.shopId)continue;
+   const row={...clone(change.row),shopId,sourceId:change.row.sourceId+':'+shopId};
+   const exists=[...state.sourceCatalog,...expanded.map(item=>item.row)].some(item=>item.shopId===shopId&&(isSpecialComponent(row)?isSpecialComponent(item)&&item.name===row.name:item.goodsId===row.goodsId));
+   if(exists){skipped++;continue;}
+   expanded.push({before:null,row});
+  }
+ }
+ changes=expanded;
  const next=clone(state),seen=new Set(),taxes=new Map();
  for(const change of changes){
   const row=normalizeSpecialComponent(clone(change.row)),before=view(change.before);
@@ -41,6 +57,17 @@ export function sourceBatch(state,changes,at=new Date().toISOString()){
   if(index<0)next.sourceCatalog.push(saved);else next.sourceCatalog[index]=saved;
  }
  next.costSource=costRows(next.sourceCatalog,next.costSource||[]);
+ const erpIds=new Set();
+ for(const {row,before} of changes){
+  if(isSpecialComponent(row)||!row.erpUpdatedAt||row.erpUpdatedAt===before?.erpUpdatedAt)continue;
+  if(!Number.isFinite(Date.parse(row.erpUpdatedAt))||row.erp!==null&&(!Number.isFinite(row.erp)||row.erp<0))throw Error('ERP 查询价格或时间无效，请重新查询');
+  const cost=next.costSource.find(r=>r.goodsId===row.goodsId);
+  if(cost?.erpUpdatedAt&&Date.parse(cost.erpUpdatedAt)>Date.parse(row.erpUpdatedAt))continue;
+  const values={erp:row.erp,erpName:row.erpName,erpUpdatedAt:row.erpUpdatedAt,erpUnknown:row.erp==null,erpMissing:false};
+  if(cost)Object.assign(cost,values,{name:row.erpName||cost.name});
+  for(const source of next.sourceCatalog)if(source.goodsId===row.goodsId)Object.assign(source,values);
+  for(const config of next.configs){if(config.deletedAt)continue;for(const part of allConfigParts(config))if(!isSpecialComponent(part)&&part.goodsId===row.goodsId){Object.assign(part,values);erpIds.add(config.id);}}
+ }
  const configIds=taxes.size?applyManualCosts(next,[...taxes].map(([goodsId,tax])=>({goodsId,tax})),at):[];
- return {next,configIds,count:changes.length};
+ return {next,configIds:[...new Set([...configIds,...erpIds])],count:changes.length,skipped};
 }

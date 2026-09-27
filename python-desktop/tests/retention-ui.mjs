@@ -1,0 +1,30 @@
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import assert from 'node:assert/strict';
+import {spawn} from 'node:child_process';
+import {createRequire} from 'node:module';
+const root=path.resolve('python-desktop');
+const {chromium}=createRequire(import.meta.url)(path.join(process.env.USERPROFILE,'.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright'));
+const directory=await fs.mkdtemp(path.join(root,'.verification/retention-ui-')),data=path.join(directory,'data');
+const child=spawn(path.join(root,'.venv/Scripts/python.exe'),['-X','utf8',path.join(root,'tests/local_first_harness.py'),'--headless','--port','0'],{windowsHide:true,env:{...process.env,DIY_WORKBENCH_DATA_DIR:data,DIY_WORKBENCH_USER_DATA:path.join(directory,'profile')},stdio:['ignore','pipe','pipe']});
+let logs='',browser;child.stderr.on('data',b=>logs+=b);
+const sdk=`let session=null;export default {init(){return {auth:{onAuthStateChange(){},async signInWithPassword(v){session={access_token:v.username,user:{is_anonymous:false}};return{data:{session}};},async getSession(){return{data:{session}}},async signOut(){session=null;return{}}}}}};`;
+const report={directory,checks:[],screens:[]};
+try{
+ const url=await new Promise((resolve,reject)=>{let output='';const timer=setTimeout(()=>reject(Error('Startup timeout '+logs)),20000);child.stdout.on('data',b=>{output+=b;const match=output.match(/WORKBENCH_READY (http:\/\/\S+)/);if(match){clearTimeout(timer);resolve(match[1]);}});child.once('exit',code=>reject(Error('Test backend exited '+code+' '+logs)));});
+ browser=await chromium.launch({channel:'chrome',headless:true});const page=await browser.newPage({viewport:{width:1600,height:1000}}),errors=[];page.on('pageerror',e=>errors.push(e.message));
+ await page.route('https://**',r=>r.abort());await page.route('**/vendor/cloudbase.js',r=>r.fulfill({contentType:'text/javascript',body:sdk}));
+ await page.goto(url);await page.waitForFunction(()=>typeof document.querySelector('#startup-login')?.onsubmit==='function');await page.locator('[name=username]').fill('A');await page.locator('[name=password]').fill('synthetic');await page.locator('#startup-login button').click();
+ await page.waitForFunction(()=>document.querySelector('[data-config=name]')?.value==='配置1');await page.waitForFunction(()=>document.querySelector('#poster').height>500);
+ let fixture=await (await page.request.get(url+'/api/state')).json();fixture.configs[0].deletedAt=new Date(Date.now()-86400000).toISOString();const expired=structuredClone(fixture.configs[0]);expired.id='expired-fixture';expired.deletedAt=new Date(Date.now()-4*86400000).toISOString();fixture.configs.push(expired);
+ await page.route('**/api/state',async route=>{if(route.request().method()==='POST'){const incoming=route.request().postDataJSON();fixture={...fixture,...incoming,revision:fixture.revision+1};await route.fulfill({json:{state:fixture,revision:fixture.revision,logs:[]}});}else await route.fulfill({json:fixture});});
+ await page.reload();await page.waitForFunction(()=>typeof document.querySelector('#startup-login')?.onsubmit==='function');await page.locator('[name=username]').fill('A');await page.locator('[name=password]').fill('synthetic');await page.locator('#startup-login button').click();await page.waitForFunction(()=>document.querySelector('#deleted-configs')?.textContent.includes('1'));
+ await page.locator('.list-management summary').click();await page.locator('#deleted-configs').click();
+ assert.match(await page.locator('#dialog-body').innerText(),/所有本地历史备份.*仅保留 3 天/);
+ assert.equal(await page.locator('[data-restore-config]').count(),1);
+ assert.match(await page.locator('#dialog-body').innerText(),/到期：/);
+ await page.screenshot({path:path.join(root,'verification/retention-three-days.png')});
+ await page.locator('[data-restore-config]').click();
+ assert.equal(await page.locator('[data-restore-config]').count(),0);
+ assert.deepEqual(errors,[]);console.log(JSON.stringify({ok:true,directory,checks:['retention text','72-hour filtering','expiry timestamp','restore click']}));
+}finally{await browser?.close();child.kill();}

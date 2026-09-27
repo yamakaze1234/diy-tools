@@ -46,3 +46,7 @@ source-preview-*/
 /现有工具输出契约核验.json
 /在线表格样例核验.json
 /真实素材登记.json
+
+# Machine-specific deployment and cleanup records
+/web-lite/DEPLOYMENT.md
+/docs/cleanup-*.json

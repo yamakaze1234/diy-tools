@@ -32,7 +32,7 @@ test('三店显示名称与加购隔离，核算价按 goodsId 同步共享',()=
  const gigabyteSource=sourcesFor(state,'gigabyte')[0];Object.assign(gigabyteSource,{name:'技嘉展示名',addonText:'技嘉加购',addonNote:'仅技嘉'});
  syncSource([gigabyte],gigabyteSource,['name','addon']);
  assert.equal(gigabyte.parts[0].name,'技嘉展示名');
- assert.equal(gigabyte.addons[0].text,'技嘉加购');
+ assert.equal(gigabyte.parts[0].upgrade,'技嘉加购');assert.deepEqual(gigabyte.addons,[]);
  assert.equal(intel.parts[0].name,'英特尔展示名');
  assert.equal(intel.addons[0].text,'英特尔加购');
  state.costSource=costRows(state.sourceCatalog);

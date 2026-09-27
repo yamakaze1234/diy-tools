@@ -4,8 +4,18 @@ import {createDemo,calculate,instantiateTemplate,replaceFromTemplate,templateDif
 
 test('复用本地工作台公式：售价、店铺券、分期费及两种利润',()=>{
  const s=createDemo(),c=s.configs[1];let t=calculate(c,s.catalog,200);
- assert.deepEqual([t.erp,t.tax,t.listPrice,t.erpProfit,t.taxProfit,t.capacity],[6600,6450,7699,749.02,691,12]);
- t=calculate({...c,installment:24},s.catalog,200);assert.equal(t.fee,749.9);assert.equal(t.erpProfit,-.88);assert.equal(t.taxProfit,-58.9);
+ assert.deepEqual([t.erp,t.tax,t.listPrice,t.erpProfit,t.taxProfit,t.capacity],[6600,6450,7699,749.02,649.04,12]);
+ t=calculate({...c,installment:24},s.catalog,200);assert.equal(t.fee,749.9);assert.equal(t.erpProfit,-.88);assert.equal(t.taxProfit,-100.86);
+});
+
+test('24期维护表口径：按到手价扣4%，核算利润与桌面版一致',()=>{
+ for(const [price,tax,profit] of [[5999,5132,-72.86],[7199,6116,-24.86],[7199,6166.36,-75.22]]){
+  const config={price,installment:24,actualParts:[{slot:'CPU',name:'合计',goodsId:'123',qty:1}]};
+  const result=calculate(config,[{goodsId:'123',erp:tax,tax,stockAvailable:1}],400);
+  assert.equal(result.taxProfit,profit);
+  assert.equal(result.listPrice,price+400);
+  assert.equal(result.fee,Math.round(price*10)/100);
+ }
 });
 test('空成本与未绑定 ID 不得按零成本显示利润，数值零是真实成本',()=>{
  const s=createDemo();const c=copy(s.configs[1]);c.actualParts[0].goodsId='不存在';let t=calculate(c,s.catalog,200);assert.equal(t.erpProfit,null);assert.equal(t.taxProfit,null);assert.equal(t.capacity,null);

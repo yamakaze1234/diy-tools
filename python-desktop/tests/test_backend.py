@@ -51,6 +51,36 @@ class BackendTests(unittest.TestCase):
     def tearDown(self):
         self.s.close()
 
+    def test_revision_merge_excludes_logs_and_nested_request_baseline(self):
+        base = copy.deepcopy(self.s.state)
+        local = copy.deepcopy(base)
+        remote = copy.deepcopy(base)
+        local['configs'][0]['version'] = '旗舰版'
+        remote['configs'][0]['price'] += 1
+        local['baseState'] = base
+        for value in (base, local, remote):
+            value['logs'] = [{'message': 'x' * 1000000}]
+        original = self.s.domain
+        calls = []
+        def checked(name, *args):
+            calls.append(name)
+            self.assertEqual(name, 'mergeEditingState')
+            for value in args:
+                self.assertNotIn('logs', value)
+                self.assertNotIn('baseState', value)
+            return original(name, *args)
+        self.s.domain = checked
+        try:
+            result = self.s.merge_editing_state(base, local, remote)
+            self.assertFalse(result['conflict'])
+            self.assertEqual(result['state']['configs'][0]['version'], '旗舰版')
+            self.assertEqual(result['state']['configs'][0]['price'], remote['configs'][0]['price'])
+            remote['configs'][0]['version'] = '他人版本'
+            self.assertTrue(self.s.merge_editing_state(base, local, remote)['conflict'])
+            self.assertEqual(len(calls), 2)
+        finally:
+            self.s.domain = original
+
     def seed_cloud(self):
         records = RECORDS + [dict(type='workspace_meta', id='root', data=dict(format=2))]
         changes = [dict(**r, seq=i+1, version=1, updatedAt=now(), updatedBy='B') for i, r in enumerate(records)]
@@ -142,6 +172,56 @@ class BackendTests(unittest.TestCase):
         marker = json.loads((self.local / 'python-backend-migration.json').read_text())
         saved = json.loads((Path(marker['backup']) / 'state.json').read_text(encoding='utf-8'))
         self.assertEqual(saved, STATE)
+
+    def test_product_lookup_http_is_readonly_and_member_scoped(self):
+        owner = self.s.cloud.owner(self.cookie)
+        self.s.credentials.save(owner, SETTINGS, 'synthetic-password')
+        before = copy.deepcopy(self.s.state)
+        server = start_server(self.s, 0)
+        base = f'http://127.0.0.1:{server.server_port}'
+        try:
+            self.assertEqual(requests.post(base + '/api/sql-sync/product', json={'goodsId': '123'}).status_code, 401)
+            with patch('service.read_product', return_value=dict(found=True, goodsId='123', name='ERP原名', erp=25)) as reader:
+                response = requests.post(base + '/api/sql-sync/product', json={'goodsId': '123'}, headers={'Cookie': self.cookie})
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.json()['erp'], 25)
+                self.assertEqual(reader.call_args.args[2], '123')
+            self.assertEqual(self.s.state, before)
+        finally:
+            server.shutdown()
+            server.server_close()
+
+    def test_sync_status_does_not_wait_for_save_lock(self):
+        server = start_server(self.s, 0)
+        url = f'http://127.0.0.1:{server.server_port}/api/workspace-sync/status'
+        headers = {'Cookie': self.cookie, 'X-DIY-Sync': self.s.cloud.csrf}
+        try:
+            with self.s.lock:
+                response = requests.get(url, headers=headers, timeout=2)
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.json(), {'localBusy': True})
+                anonymous = requests.get(url, headers={'X-DIY-Sync': self.s.cloud.csrf}, timeout=2)
+                self.assertFalse(anonymous.json()['signedIn'])
+            status = requests.get(url, headers=headers, timeout=2).json()
+            self.assertNotIn('localBusy', status)
+            self.assertTrue(status['signedIn'])
+        finally:
+            server.shutdown()
+            server.server_close()
+
+    def test_save_batches_activity_without_losing_entries(self):
+        incoming = copy.deepcopy(self.s.state)
+        incoming['baseState'] = copy.deepcopy(self.s.state)
+        incoming['baseRevision'] = self.s.state['revision']
+        for config in incoming['configs']:
+            config['price'] += 1
+        with patch.object(self.s, 'domain', wraps=self.s.domain) as domain:
+            result = self.s.update_state(incoming, self.cookie)
+        calls = [c.args[0] for c in domain.call_args_list]
+        self.assertEqual(calls.count('batchActivityEntries'), 1)
+        self.assertNotIn('activityEntry', calls)
+        ids = {entry['target']['id'] for entry in result['logs']}
+        self.assertTrue(all(c['id'] in ids for c in incoming['configs']))
 
     def test_http_login_gate_csrf_origin_and_logout(self):
         server = start_server(self.s)

@@ -3,6 +3,7 @@ import {sourceDiff,syncSource} from './source.js';
 import {selectableComponents} from './component-policy.js';
 export const sourceChangeKey=(configId,sourceId,slot,field)=>JSON.stringify([configId,sourceId,slot,field]);
 export function sourceSyncPlan(configs,rows,fields,shopId,options={}){
+ fields=[...new Set(fields.map(field=>field==='addon'?'upgrade':field))];
  if(!fields.length)throw Error('请至少勾选一个同步字段');
  const catalog=selectableComponents(rows).filter(r=>!r.deletedAt&&r.shopId===shopId),byId=new Map(catalog.map(r=>[r.sourceId,r])),used=new Map(),changes=[];
  const retained=new Set(options.retained||[]);
